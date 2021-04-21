@@ -1,3 +1,3 @@
-# Chainlink Data Feed MS
+# Polkadot Access MS
 
-Collect currency prices using Chainlink smart contracts
+Micro service to make read-only queries to the Polkadot network
