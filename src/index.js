@@ -22,6 +22,7 @@ const exec = async () => {
     // initiate global database connection
     await getConnection(CouchDB_URL)
     const currenciesArr = await currenciesDB.getAll(null, true, limit)
+    // make currencies easily searchable
     const currenciesMap = new Map(
         Array.from(currenciesArr)
             .map(([_, value]) => [value.ISO, value])
@@ -50,34 +51,52 @@ const exec = async () => {
         }
     }
 
-    const updatePrice = async(entry) => {
-        const [ISO, { ABI, contractAddress }] = entry
-        const { priceUSD, updatedAt } = await getPrice(ABI, contractAddress)
-        const currency = currenciesMap.get(ISO)
-        if (!currency) {
-            // ignore if currency not available in the currencies list
-            currencies404.set(ISO, ISO)
-            return
-        }
-
-        // ignore if price hasn't changed since last update
-        if (currency.priceUpdatedAt === updatedAt) {
-            log(`${ISO} price unchanged since last update`)
-            return
-        }
-        
-        // calcualte ratio of exchange using USD price
-        const ROE = parseInt(priceUSD * 100000000)
-        currency.ratioOfExchange = `${ROE}`
-        currency.priceUpdatedAt = updatedAt
-        log(ISO, priceUSD, ROE, updatedAt)
-        await currenciesDB.set(currency._id, currency, true)
-    }
-
     // update prices
-    for (const entry of Array.from(ABIs)) {
-        updatePrice(entry)
+    let results = await Promise.all(
+        Array.from(ABIs)
+            .map(ABIEntry =>
+                getUpdatedCurrency(ABIEntry, currenciesMap)
+            )
+    )
+    results = new Map(results.filter(Boolean))
+    if (results.size === 0) return log('No changes to database')
+    
+    log('Updating database')
+    currenciesDB.setAll(results, false)
+}
+
+/**
+ * @name    getUpdatedCurrency
+ * 
+ * @param   {Object} ABIEntry 
+ * @param   {Object} currenciesMap 
+ * 
+ * @returns {Array}
+ */
+const getUpdatedCurrency = async(ABIEntry, currenciesMap) => {
+    const [ISO, { ABI, contractAddress }] = ABIEntry
+    const { priceUSD, updatedAt } = await getPrice(ABI, contractAddress)
+    const currency = currenciesMap.get(ISO)
+    if (!currency) {
+        // ignore if currency not available in the currencies list
+        currencies404.set(ISO, ISO)
+        log(`${ISO}: unsupported currency`)
+        return
     }
+
+    // ignore if price hasn't changed since last update
+    if (currency.priceUpdatedAt === updatedAt) {
+        log(`${ISO}: price unchanged since last update`)
+        return
+    }
+    
+    // calcualte ratio of exchange using USD price
+    const ROE = parseInt(priceUSD * 100000000)
+    currency.ratioOfExchange = `${ROE}`
+    currency.priceUpdatedAt = updatedAt
+    log(ISO, priceUSD, ROE, updatedAt)
+    // await currenciesDB.set(currency._id, currency, true)
+    return [currency._id, currency]
 }
 
 const start = () => exec()
@@ -90,5 +109,5 @@ const start = () => exec()
         log(`waiting ${cycleDurationMin} minutes before next execution`)
         setTimeout(start, delay)
     })
-
+// start execution
 start()
