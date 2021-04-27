@@ -18,3 +18,8 @@ sslcert/*.pem
 
 # ignore submodules
 .gitmodules
+
+
+# data and logs
+data
+log

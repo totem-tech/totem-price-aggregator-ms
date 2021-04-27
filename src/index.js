@@ -81,7 +81,7 @@ const start = () => exec()
         if (!cycleDurationMin) return
 
         const delay = cycleDurationMin * 60 * 1000
-        log(`waiting for ${cycleDurationMin} minutes before next execution`)
+        log(`waiting ${cycleDurationMin} minutes before next execution`)
         setTimeout(start, delay)
     })
 
