@@ -21,5 +21,5 @@ sslcert/*.pem
 
 
 # data and logs
-data
-log
+data/*
+log/*
