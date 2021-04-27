@@ -34,7 +34,7 @@ const exec = async () => {
         log(`Processing ${ISO} ${contractAddress}...`)
         if (!ISO || !isStr(ISO)) continue // ignore if ISO not provided or empty string
     
-        const { ABI, contractAddress: ca } = await ABIs.get(ISO) || {}    
+        const { ABI, contractAddress: ca } = await ABIs.get(ISO) || {}
         if (!isArr(ABI) || contractAddress !== ca) {
             log(`Retrieving ABI...`)
             // Retrieve ABI using Etherscan API
@@ -47,22 +47,23 @@ const exec = async () => {
             // for local use
             ABIs.set(ISO, { ...value, decimals, ABI })
             contracts.delete(ISO)
-        }  
+        }
     }
 
-    for (const [ISO, { ABI, contractAddress}] of Array.from(ABIs)) {
+    const updatePrice = async(entry) => {
+        const [ISO, { ABI, contractAddress }] = entry
         const { priceUSD, updatedAt } = await getPrice(ABI, contractAddress)
         const currency = currenciesMap.get(ISO)
         if (!currency) {
             // ignore if currency not available in the currencies list
             currencies404.set(ISO, ISO)
-            continue
+            return
         }
 
         // ignore if price hasn't changed since last update
         if (currency.priceUpdatedAt === updatedAt) {
             log(`${ISO} price unchanged since last update`)
-            continue
+            return
         }
         
         // calcualte ratio of exchange using USD price
@@ -71,7 +72,12 @@ const exec = async () => {
         currency.priceUpdatedAt = updatedAt
         log(ISO, priceUSD, ROE, updatedAt)
         await currenciesDB.set(currency._id, currency, true)
-    }   
+    }
+
+    // update prices
+    for (const entry of Array.from(ABIs)) {
+        updatePrice(entry)
+    }
 }
 
 const start = () => exec()
