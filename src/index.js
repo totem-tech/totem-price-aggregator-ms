@@ -110,7 +110,7 @@ const getUpdatedCurrency = async(ABIEntry, currenciesMap) => {
 const start = () => exec()
     .catch(err => {
         const incidentID = uuid.v1()
-        // log(`Execution ended with error \n${err.stack}`)
+        log(`IncidentID: ${incidentID}: execution ended with error \n${err.stack}`)
 
         if (!DISCORD_WEBHOOK_URL) return
 
