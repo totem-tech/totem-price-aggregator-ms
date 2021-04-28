@@ -21,12 +21,6 @@ const exec = async () => {
     log('Retrieving list of currencies...')
     // initiate global database connection
     await getConnection(CouchDB_URL)
-    const currenciesArr = await currenciesDB.getAll(null, true, limit)
-    // make currencies easily searchable
-    const currenciesMap = new Map(
-        Array.from(currenciesArr)
-            .map(([_, value]) => [value.ISO, value])
-    )
     const ABIs = await ABIsDB.getAll(null, true, limit)
 
     // retrieve and store ABIs
@@ -51,6 +45,14 @@ const exec = async () => {
         }
     }
 
+
+    const currenciesArr = await currenciesDB.getAll(null, true, limit)
+    // make currencies easily searchable
+    const currenciesMap = new Map(
+        Array.from(currenciesArr)
+            .map(([_, value]) => [value.ISO, value])
+    )
+
     // update prices
     let results = await Promise.all(
         Array.from(ABIs)
@@ -61,7 +63,7 @@ const exec = async () => {
     results = new Map(results.filter(Boolean))
     if (results.size === 0) return log('No changes to database')
     
-    log('Updating database')
+    log('Updating database...')
     currenciesDB.setAll(results, false)
 }
 
@@ -106,7 +108,7 @@ const start = () => exec()
         if (!cycleDurationMin) return
 
         const delay = cycleDurationMin * 60 * 1000
-        log(`waiting ${cycleDurationMin} minutes before next execution`)
+        log(`Waiting ${cycleDurationMin} minutes before next execution`)
         setTimeout(start, delay)
     })
 // start execution
