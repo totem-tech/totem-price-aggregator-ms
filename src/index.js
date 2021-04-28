@@ -1,3 +1,5 @@
+import request from 'request'
+import uuid from 'uuid'
 import DataStorage from './utils/DataStorage'
 import CouchDBStorage, { getConnection } from './utils/CouchDBStorage'
 import { isArr, isStr } from './utils/utils'
@@ -5,6 +7,9 @@ import { getAbi } from './etherscanHelper'
 import { getPrice } from './ethHelper'
 
 const CouchDB_URL = process.env.CouchDB_URL
+const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL
+const DISCORD_WEBHOOK_AVATAR_URL = process.env.DISCORD_WEBHOOK_AVATAR_URL
+const DISCORD_WEBHOOK_USERNAME = process.env.DISCORD_WEBHOOK_USERNAME
 // number of minutes to wait for next execution. If falsy, will only execute once
 const cycleDurationMin = parseInt(process.env.cycleDurationMin || 0)
 // list of currencies to update
@@ -79,6 +84,7 @@ const getUpdatedCurrency = async(ABIEntry, currenciesMap) => {
     const [ISO, { ABI, contractAddress }] = ABIEntry
     const { priceUSD, updatedAt } = await getPrice(ABI, contractAddress)
     const currency = currenciesMap.get(ISO)
+
     if (!currency) {
         // ignore if currency not available in the currencies list
         currencies404.set(ISO, ISO)
@@ -102,7 +108,30 @@ const getUpdatedCurrency = async(ABIEntry, currenciesMap) => {
 }
 
 const start = () => exec()
-    .catch(err => log(`Execution ended with error \n${err.stack}`))
+    .catch(err => {
+        const incidentID = uuid.v1()
+        // log(`Execution ended with error \n${err.stack}`)
+
+        if (!DISCORD_WEBHOOK_URL) return
+
+        // send message to discord
+        const handleReqErr = err => err && console.log('Discord Webhook: failed to send error message. ', err)
+        const content = '>>> ' + [
+            `**IncidentID:** ${incidentID}`,
+            '**Error:** ' + `${err}`.replace('Error:', ''),
+        ].join('\n')
+        request({
+            json: true,
+            method: 'POST',
+            timeout: 30000,
+            url: DISCORD_WEBHOOK_URL,
+            body: {
+                avatar_url: DISCORD_WEBHOOK_AVATAR_URL,
+                content,
+                username: DISCORD_WEBHOOK_USERNAME || 'Totem Price Aggregator Logger'
+            }
+        }, handleReqErr)
+    })
     .finally(() => {
         log('Execution complete')
         if (!cycleDurationMin) return
