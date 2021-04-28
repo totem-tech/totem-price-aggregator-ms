@@ -1,5 +1,5 @@
 import request from 'request'
-import uuid from 'uuid'
+import { v1 as uuidv1 } from 'uuid'
 import DataStorage from './utils/DataStorage'
 import CouchDBStorage, { getConnection } from './utils/CouchDBStorage'
 import { isArr, isStr } from './utils/utils'
@@ -20,7 +20,6 @@ const contracts = new DataStorage('currency-contract-address.json')
 const currencies404 = new DataStorage('currencies404.json')
 const limit = 99999 // max number of currencies
 const log = (...args) => console.log(new Date(), ...args)
-
 const exec = async () => {
     log('Execution started')
     log('Retrieving list of currencies...')
@@ -109,7 +108,7 @@ const getUpdatedCurrency = async(ABIEntry, currenciesMap) => {
 
 const start = () => exec()
     .catch(err => {
-        const incidentID = uuid.v1()
+        const incidentID = uuidv1()
         log(`IncidentID: ${incidentID}: execution ended with error \n${err.stack}`)
 
         if (!DISCORD_WEBHOOK_URL) return
