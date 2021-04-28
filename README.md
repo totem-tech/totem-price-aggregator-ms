@@ -1,3 +1,3 @@
-# Polkadot Access MS
+# Totem Reference Rate Aggregator Micro Service
 
-Micro service to make read-only queries to the Polkadot network
+Micro service to update currency reference rates from ChainLink smart contracts
