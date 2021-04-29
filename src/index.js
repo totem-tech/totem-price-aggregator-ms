@@ -90,7 +90,7 @@ const exec = async () => {
                     ? 'chain.link'
                     : cmcEntry
                         ? 'coinmarketcap.com'
-                        : undefined,
+                        : 'totem.live',
                 priceUpdatedAt: ts,
             }
         ]
