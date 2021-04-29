@@ -1,11 +1,15 @@
 import request from 'request'
+import { Headers } from 'node-fetch'
 import { v1 as uuidv1 } from 'uuid'
 import DataStorage from './utils/DataStorage'
 import CouchDBStorage, { getConnection } from './utils/CouchDBStorage'
 import { isArr, isStr } from './utils/utils'
 import { getAbi } from './etherscanHelper'
 import { getPrice } from './ethHelper'
+import PromisE from './utils/PromisE'
 
+const CMC_URL = process.env.CMC_URL || ''
+const CMC_APIKey = process.env.CMC_APIKey
 const CouchDB_URL = process.env.CouchDB_URL
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL
 const DISCORD_WEBHOOK_AVATAR_URL = process.env.DISCORD_WEBHOOK_AVATAR_URL
@@ -16,18 +20,20 @@ const cycleDurationMin = parseInt(process.env.cycleDurationMin || 0)
 const currenciesDB = new CouchDBStorage(null, 'currencies')
 const ABIsDB = new CouchDBStorage(null, 'currencies_abi')
 // contract list: https://docs.chain.link/docs/ethereum-addresses
-const contracts = new DataStorage('currency-contract-address.json')
-const currencies404 = new DataStorage('currencies404.json')
+const contracts = new DataStorage('currency-contract-address.json', true)
+const currencies404 = new DataStorage('currencies404.json', true)
 const limit = 99999 // max number of currencies
 const log = (...args) => console.log(new Date(), ...args)
+const usdToROE = usd => parseInt(usd * 100000000)
+
 const exec = async () => {
     log('Execution started')
-    log('Retrieving list of currencies...')
+    log('Retrieving list of ABIs from database...')
     // initiate global database connection
     await getConnection(CouchDB_URL)
     const ABIs = await ABIsDB.getAll(null, true, limit)
 
-    // retrieve and store ABIs
+    // retrieve and store missing ABIs
     for (const [ISO, value] of contracts.toArray()) {
         let { contractAddress, decimals = 8 } = value || {}
         log(`Processing ${ISO} ${contractAddress}...`)
@@ -49,61 +55,119 @@ const exec = async () => {
         }
     }
 
-
-    const currenciesArr = await currenciesDB.getAll(null, true, limit)
+    log('Retrieving list of currencies from database...')
+    const currenciesArr = Array.from(await currenciesDB.getAll(null, true, limit))
     // make currencies easily searchable
     const currenciesMap = new Map(
-        Array.from(currenciesArr)
-            .map(([_, value]) => [value.ISO, value])
+        currenciesArr.map(([_, value]) => [value.ISO, value])
     )
 
-    // update prices
-    let results = await Promise.all(
+    // Retrieve latest prices
+    let cmcPrices = await getCMCPrices()
+    log('Retrieving prices using ChainLink smart contracts')
+    const chainlinkPrices = new Map(await Promise.all(
         Array.from(ABIs)
             .map(ABIEntry =>
                 getUpdatedCurrency(ABIEntry, currenciesMap)
             )
-    )
-    results = new Map(results.filter(Boolean))
-    if (results.size === 0) return log('No changes to database')
+    ))
     
+    // combine data from chainlink, cmc and existing database
+    const updatedCurrencies = currenciesArr.map(([id, currency]) => {
+        const { ISO, ratioOfExchange, priceUpdatedAt } = currency
+        const clEntry = chainlinkPrices.get(ISO)
+        const cmcEntry = cmcPrices.get(ISO)
+    
+        const { ratioOfExchange: roe } = (clEntry || cmcEntry) || { ratioOfExchange }
+        const { priceUpdatedAt: ts } = (clEntry || cmcEntry) || { priceUpdatedAt }
+        const x = [
+            id,
+            {
+                ...currency,
+                rank: (cmcEntry || {}).rank,
+                ratioOfExchange: roe,
+                source: clEntry ? 'chain.link' : 'coinmarketcap.com',
+                priceUpdatedAt: ts,
+            }
+        ]
+
+        return x
+    })
+    // log(JSON.stringify(updatedCurrencies, null, 4))
     log('Updating database...')
-    currenciesDB.setAll(results, false)
+    currenciesDB.setAll(new Map(updatedCurrencies), false)
+}
+
+/**
+ * @name    getCMCPrices
+ * @summary retrieve list of all currencies using CMC Pro developer API
+ * 
+ * @returns {Map}
+ */
+const getCMCPrices = async () => {
+    if (!CMC_URL || !CMC_APIKey) return
+
+    log('Retrieving currencies from CMC', CMC_URL)
+    const urlSuffix = 'cryptocurrency/listings/latest?start=1&limit=5000&convert=USD'
+    const cmcurl = `${CMC_URL}${CMC_URL.endsWith('/') ? '' : '/'}${urlSuffix}`
+    const options = { headers: { 'X-CMC_PRO_API_KEY': CMC_APIKey } }
+    let result = (await PromisE.fetch(cmcurl, options)) || {}
+    let { data } = result
+
+    if (!isArr(data) || !data.length) {
+        log('Invalid data received from CMC')
+        return
+    }
+
+    data = data.map(entry => {
+        const { 
+            cmc_rank: rank,
+            last_updated: priceUpdatedAt,
+            quote: {
+                USD: { price }
+            },
+            symbol: ISO,
+        } = entry
+        return [
+            ISO,
+            {
+                rank,
+                ratioOfExchange: usdToROE(price),
+                priceUpdatedAt,
+            }
+        ]
+    })
+    return new Map(data)
 }
 
 /**
  * @name    getUpdatedCurrency
+ * @summary retrieves currency price using ChainLink smart contract from Ethereum
  * 
  * @param   {Object} ABIEntry 
  * @param   {Object} currenciesMap 
  * 
- * @returns {Array}
+ * @returns {Array}  Undefined if price is unchanged or unsupported.
  */
-const getUpdatedCurrency = async(ABIEntry, currenciesMap) => {
+const getUpdatedCurrency = async(ABIEntry) => {
     const [ISO, { ABI, contractAddress }] = ABIEntry
-    const { priceUSD, updatedAt } = await getPrice(ABI, contractAddress)
-    const currency = currenciesMap.get(ISO)
-
-    if (!currency) {
-        // ignore if currency not available in the currencies list
-        currencies404.set(ISO, ISO)
-        log(`${ISO}: unsupported currency`)
+    let result
+    try {
+        result = await getPrice(ABI, contractAddress)
+    } catch (err) {
+        // prevent failing even if one currency request failed
+        log(`${ISO} chainlink price update failed. ${err}`)
         return
     }
+    const { priceUSD, updatedAt } = result
 
-    // ignore if price hasn't changed since last update
-    if (currency.priceUpdatedAt === updatedAt) {
-        log(`${ISO}: price unchanged since last update`)
-        return
-    }
-    
-    // calcualte ratio of exchange using USD price
-    const ROE = parseInt(priceUSD * 100000000)
-    currency.ratioOfExchange = `${ROE}`
-    currency.priceUpdatedAt = updatedAt
-    log(ISO, priceUSD, ROE, updatedAt)
-    // await currenciesDB.set(currency._id, currency, true)
-    return [currency._id, currency]
+    return [
+        ISO,
+        {
+            ratioOfExchange: usdToROE(priceUSD),
+            priceUpdatedAt: updatedAt,
+        }
+    ]
 }
 
 const start = () => exec()
