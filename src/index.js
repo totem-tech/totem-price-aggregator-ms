@@ -85,8 +85,12 @@ const exec = async () => {
             {
                 ...currency,
                 rank: (cmcEntry || {}).rank,
-                ratioOfExchange: roe,
-                source: clEntry ? 'chain.link' : 'coinmarketcap.com',
+                ratioOfExchange: `${roe}`,
+                source: clEntry
+                    ? 'chain.link'
+                    : cmcEntry
+                        ? 'coinmarketcap.com'
+                        : undefined,
                 priceUpdatedAt: ts,
             }
         ]
