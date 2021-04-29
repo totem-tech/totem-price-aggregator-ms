@@ -1,9 +1,9 @@
 import request from 'request'
-import { Headers } from 'node-fetch'
+import CoinGecko from 'coingecko-api'
 import { v1 as uuidv1 } from 'uuid'
 import DataStorage from './utils/DataStorage'
 import CouchDBStorage, { getConnection } from './utils/CouchDBStorage'
-import { isArr, isStr } from './utils/utils'
+import { arrSort, isArr, isDefined, isStr } from './utils/utils'
 import { getAbi } from './etherscanHelper'
 import { getPrice } from './ethHelper'
 import PromisE from './utils/PromisE'
@@ -14,6 +14,7 @@ const CouchDB_URL = process.env.CouchDB_URL
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL
 const DISCORD_WEBHOOK_AVATAR_URL = process.env.DISCORD_WEBHOOK_AVATAR_URL
 const DISCORD_WEBHOOK_USERNAME = process.env.DISCORD_WEBHOOK_USERNAME
+const CoinGeckoClient = new CoinGecko()
 // number of minutes to wait for next execution. If falsy, will only execute once
 const cycleDurationMin = parseInt(process.env.cycleDurationMin || 0)
 // list of currencies to update
@@ -61,41 +62,50 @@ const exec = async () => {
     const currenciesMap = new Map(
         currenciesArr.map(([_, value]) => [value.ISO, value])
     )
-
+    
     // Retrieve latest prices
-    let cmcPrices = (await getCMCPrices()) || new Map()
+    const cmcPrices = (await getCMCPrices()) || new Map()
+
+    const cgPrices = (await getCoinGeckoPrices()) || new Map()
     log('Retrieving prices using ChainLink smart contracts')
     const c404 = new Map()
     const chainlinkPrices = new Map(await Promise.all(
         Array.from(ABIs)
             .map(ABIEntry => {
                 const [ ISO ] = ABIEntry
-                if (!currenciesMap.get(ISO)) c404.set(ISO, false)
+                if (!currenciesMap.get(ISO)) {
+                    c404.set(ISO, false)
+                    log(`${ISO} Chainlink entry not in database`)
+                }
                 return getUpdatedCurrency(ABIEntry, currenciesMap)
             })
     ))
-    currencies404.setAll(c404, true)
     
     // combine data from chainlink, cmc and existing database
     let updateCount = 0
     const updatedCurrencies = currenciesArr.map(([id, currency]) => {
         const { ISO, ratioOfExchange, priceUpdatedAt } = currency
         const clEntry = chainlinkPrices.get(ISO)
+        const cgEntry = cgPrices.get(ISO)
         const cmcEntry = cmcPrices.get(ISO)
     
-        const { ratioOfExchange: roe } = (clEntry || cmcEntry) || { ratioOfExchange }
-        const { priceUpdatedAt: ts } = (clEntry || cmcEntry) || { priceUpdatedAt }
+        const { ratioOfExchange: roe } = (clEntry || cgEntry || cmcEntry) || { ratioOfExchange }
+        const { priceUpdatedAt: ts } = (clEntry || cgEntry || cmcEntry) || { priceUpdatedAt }
+
         const x = [
             id,
             {
                 ...currency,
-                rank: (cmcEntry || {}).rank,
+                marketCapUSD: (cgEntry || {}).marketCapUSD,
+                rank: (cgEntry || {}).rank,
                 ratioOfExchange: `${roe}`,
                 source: clEntry
                     ? 'chain.link'
-                    : cmcEntry
-                        ? 'coinmarketcap.com'
-                        : 'totem.live',
+                    : cgEntry
+                        ? 'coingecko.com'
+                        : cmcEntry
+                            ? 'coinmarketcap.com'
+                            : 'totem.live',
                 priceUpdatedAt: ts,
             }
         ]
@@ -106,6 +116,68 @@ const exec = async () => {
     log(`${updateCount} currency prices updated`)
     log('Updating database...')
     currenciesDB.setAll(new Map(updatedCurrencies), false)
+}
+
+const getCoinGeckoPrices = async () => {
+    log('Retrieving list of coins using CoinGecko API')
+    let { data: ids } = await CoinGeckoClient.coins.list()
+    if (!isArr(ids)) {
+        log('Invalid data received from CoinGecko')
+        return
+    }
+    const symbols = new Map(ids.map(({id, symbol}) => [id, symbol]))
+    ids = ids.map(({ id }) => id)
+    const idGroups = new Array(Math.ceil(ids.length / 450))
+        .fill(0)
+        .map((_, i) => {
+            const group = new Array(450)
+                .fill(0)
+                .map((_, n) => ids[i*450 + n])
+            return group
+        })
+        .filter(Boolean)
+    try {
+        let results = await PromisE.all(
+            idGroups.map(ids =>
+                CoinGeckoClient.simple.price({
+                    ids,
+                    vs_currencies: 'usd',
+                    include_last_updated_at: true,
+                    include_market_cap: true,
+                })
+            )
+        )
+        results = results
+            .map(x =>
+                Object.keys(x.data)
+                .map(id => [id, x.data[id]])
+            )
+            .flat()
+            .filter(([id, {usd}]) => isDefined(usd) && isDefined(id))
+            .map(([id, value]) => {
+                const { usd, last_updated_at: ts, usd_market_cap: mc } = value
+                return {
+                    id,
+                    marketCapUSD: mc || 0,
+                    ratioOfExchange: usdToROE(usd),
+                    priceUpdatedAt: !ts
+                        ? undefined
+                        : new Date(ts * 1000).toISOString(),
+                }
+            })
+        // include rank by market cap
+        results = arrSort(results, 'marketCapUSD', true)
+            .map((entry, i) => [
+                symbols.get(entry.id).toUpperCase(),
+                { ...entry, rank: i + 1 },
+            ])
+        return new Map(results)
+    } catch (err) {
+        log(`Failed to retrieve price from CoinGecko. ${err}`, err)
+        return
+    }
+    // const result = await CoinGeckoClient.simple.price({ ids: ids.slice(0, 450) })
+    // log({result})
 }
 
 /**
