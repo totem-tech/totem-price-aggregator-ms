@@ -65,14 +65,19 @@ const exec = async () => {
     // Retrieve latest prices
     let cmcPrices = await getCMCPrices()
     log('Retrieving prices using ChainLink smart contracts')
+    const c404 = new Map()
     const chainlinkPrices = new Map(await Promise.all(
         Array.from(ABIs)
-            .map(ABIEntry =>
-                getUpdatedCurrency(ABIEntry, currenciesMap)
-            )
+            .map(ABIEntry => {
+                const [ ISO ] = ABIEntry
+                if (!currenciesMap.get(ISO)) c404.set(ISO, false)
+                return getUpdatedCurrency(ABIEntry, currenciesMap)
+            })
     ))
+    currencies404.setAll(c404, true)
     
     // combine data from chainlink, cmc and existing database
+    let updateCount = 0
     const updatedCurrencies = currenciesArr.map(([id, currency]) => {
         const { ISO, ratioOfExchange, priceUpdatedAt } = currency
         const clEntry = chainlinkPrices.get(ISO)
@@ -95,9 +100,10 @@ const exec = async () => {
             }
         ]
 
+        ratioOfExchange !== roe && updateCount++
         return x
     })
-    // log(JSON.stringify(updatedCurrencies, null, 4))
+    log(`${updateCount} currency prices updated`)
     log('Updating database...')
     currenciesDB.setAll(new Map(updatedCurrencies), false)
 }
