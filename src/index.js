@@ -63,7 +63,7 @@ const exec = async () => {
     )
 
     // Retrieve latest prices
-    let cmcPrices = await getCMCPrices()
+    let cmcPrices = (await getCMCPrices()) || new Map()
     log('Retrieving prices using ChainLink smart contracts')
     const c404 = new Map()
     const chainlinkPrices = new Map(await Promise.all(

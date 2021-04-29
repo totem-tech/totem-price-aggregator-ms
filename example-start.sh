@@ -5,6 +5,8 @@
 #git submodule update --recursive --remote
 
 # Start application
+CMC_URL="string: CMC API base URL. For sandbox use: https://sandbox-api.coinmarketcap.com/v1" \
+CMC_APIKey="string: CMC API key" \
 CouchDB_URL="string: CouchDB connection URL" \
 STORAGE_PATH="string: (optional) path to JSON storage directory. Default: `./data`" \
 EthereumNodeURL="string: Ethereum node URL. Required to read price feed smart contracts." \
