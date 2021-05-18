@@ -1,9 +1,11 @@
 import DataStorage from './utils/DataStorage'
 import { getPrice } from './ethHelper'
-import usdToROE from './usdToROE'
+import { usdToROE } from './utils'
 import log from './log'
 
 const currencies404 = new DataStorage('currencies404.json', true)
+const debugTag = '[Chainlink]'
+export const sourceType = 'chain.link'
 /**
  * @name    getUpdatedCurrency
  * @summary retrieves currency price using ChainLink smart contract from Ethereum
@@ -28,7 +30,7 @@ export const getLatestPrice = async (ticker, ABI, contractAddress, chain = 'ethe
         }
     } catch (err) {
         // prevent failing even if one currency request failed
-        log(`${ticker} chainlink price update failed. ${err}`)
+        log(debugTag, `${ticker} chainlink price update failed. ${err}`)
         return
     }
     const { priceUSD, updatedAt } = result
@@ -52,7 +54,7 @@ export const getLatestPrice = async (ticker, ABI, contractAddress, chain = 'ethe
  * @returns {Map}
  */
 export const getChainLinkPrices = async (ABIEntries = new Map(), currencies = new Map()) => {
-    log('Retrieving prices using ChainLink smart contracts')
+    log(debugTag, 'Retrieving prices using ChainLink smart contracts')
     const c404 = new Map()
     const promises = Array.from(ABIEntries)
         .map(ABIEntry => {
@@ -66,7 +68,14 @@ export const getChainLinkPrices = async (ABIEntries = new Map(), currencies = ne
             }
             return getLatestPrice(ticker, ABI, contractAddress, chain)
         })
-    if (c404.size) log(`Chainlink: following currencies not found in database =>  ${Array.from(c404).map(([x]) => x)}. To deactivate a ChainLink currency change/add property "active=false" in the "currencies_abi" database.`)
+
+    if (c404.size) {
+        const tickersStr = Array.from(c404).map(([x]) => x)
+        const msg = `Chainlink: following currencies not found in database =>  ${tickersStr}. 
+        To deactivate a ChainLink currency change/add property "active=false" in the "currencies_abi" database.`
+        log(debugTag, msg)
+    }
+
     currencies404.setAll(c404, true)
     const results = await Promise.all(promises)
     return new Map(results.filter(Boolean))

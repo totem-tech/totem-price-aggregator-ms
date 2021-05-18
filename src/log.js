@@ -1,4 +1,3 @@
-import request from 'request'
 import { v1 as uuidv1 } from 'uuid'
 import PromisE from './utils/PromisE'
 
@@ -10,7 +9,9 @@ const DISCORD_WEBHOOK_USERNAME = process.env.DISCORD_WEBHOOK_USERNAME || 'Totem 
  * @name    log
  * @summary sugar for console.log with current timestamp prefixed
  */
-export default (...args) => console.log(new Date(), ...args)
+export default function log(...args) {
+    console.log(new Date(), ...args)
+}
 
 /**
  * @name    logIncident
@@ -42,3 +43,5 @@ export const logIncident = async (message, incidentID = uuidv1()) => {
 
     return incidentID
 }
+
+export const logWithTag = debugTag => (...args) => log(debugTag, ...args)

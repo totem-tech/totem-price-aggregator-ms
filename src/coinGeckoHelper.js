@@ -1,39 +1,88 @@
 import CoinGecko from 'coingecko-api'
+import DataStorage from './utils/DataStorage'
 import PromisE from './utils/PromisE'
-import { arrSort, isArr, isDefined } from './utils/utils'
-import usdToROE from './usdToROE'
+import { arrSort, isArr, isDefined, isInteger, isValidNumber } from './utils/utils'
 import log from './log'
+import { getHistoryItemId, usdToROE } from './utils'
+import CouchDBStorage from './utils/CouchDBStorage'
 
-const CoinGeckoClient = new CoinGecko()
+const coinsList = new DataStorage('coingecko-coins-list.json')
+const cgClient = new CoinGecko()
+const cryptoType = 'cryptocurrency'
+const debugTag = '[CoinGecko]'
+export const sourceText = 'coingecko.com'
 
 /**
- * @name    getCoinGeckoPrices
- * @summary retrieve a list of all ticker prices available in CoinGecko
+ * @name    getCoinsList
+ * @summary get a list of all coins available on CoinGecko
+ * 
+ * @param   {Boolean} forceUpdate 
  * 
  * @returns {Map}
  */
-export const getCoinGeckoPrices = async () => {
-    log('Retrieving list of coins using CoinGecko API')
-    let { data: ids } = await CoinGeckoClient.coins.list()
-    if (!isArr(ids)) {
-        log('Invalid data received from CoinGecko')
+export const getCoinsList = async (forceUpdate = false) => {
+    let list = coinsList.getAll()
+    if (list.size && !forceUpdate) return list
+
+    log(debugTag, 'Retrieving list of supported coins')
+    let { data } = await cgClient.coins.list()
+    if (!isArr(data)) throw log(debugTag, 'Invalid data received from CoinGecko')
+
+    data = new Map(
+        data.map(({ id, name, symbol }) => [
+            symbol,
+            { id, name }
+        ])
+    )
+    coinsList.setAll(data, true)
+    return data
+}
+
+/**
+ * @name    getCoinGeckoPrices
+ * @summary retrieve a list ticker prices from CoinGecko
+ * 
+ * @param   {Array} symbols a list of cryptcurrency symbols
+ * 
+ * @returns {Map}
+ */
+export const getLatestPrices = async (symbols = []) => {
+    log(debugTag, 'Retrieving list of coins')
+
+    let supprtedCoins
+    try {
+        supprtedCoins = await getCoinsList(false)
+    } catch (err) {
+        log(debugTag, 'Failed to retrieve coins list')
         return
     }
-    const symbols = new Map(ids.map(({ id, symbol }) => [id, symbol]))
-    ids = ids.map(({ id }) => id)
-    const idGroups = new Array(Math.ceil(ids.length / 450))
+
+    // exclude any currency that's not supported
+    let coins = symbols
+        .map(symbol => {
+            const { id } = supprtedCoins.get(symbol) || {}
+            return id && [id, symbol]
+        })
+        .filter(Boolean)
+    const ids = coins.map(([id]) => id)
+    coins = new Map(coins)
+
+    // create group of IDs for batch requests
+    // Using over ~450 may cause the request to fail
+    const maxPerGroup = 400
+    const idGroups = new Array(Math.ceil(ids.length / maxPerGroup))
         .fill(0)
         .map((_, i) => {
             const group = new Array(450)
                 .fill(0)
                 .map((_, n) => ids[i * 450 + n])
+                .filter(Boolean)
             return group
         })
-        .filter(Boolean)
     try {
         let results = await PromisE.all(
             idGroups.map(ids =>
-                CoinGeckoClient.simple.price({
+                cgClient.simple.price({
                     ids,
                     vs_currencies: 'usd',
                     include_last_updated_at: true,
@@ -42,12 +91,16 @@ export const getCoinGeckoPrices = async () => {
             )
         )
         results = results
-            .map(x =>
-                Object.keys(x.data)
-                    .map(id => [id, x.data[id]])
+            .map(({ data }) =>
+                Object.keys(data).map(id =>
+                    [id, data[id]]
+                )
             )
             .flat()
-            .filter(([id, { usd }]) => isDefined(usd) && isDefined(id))
+            // make sure there's valid price
+            .filter(([id, { usd }]) =>
+                isDefined(usd) && isDefined(id)
+            )
             .map(([id, value]) => {
                 const { usd, last_updated_at: ts, usd_market_cap: mc } = value
                 return {
@@ -62,12 +115,132 @@ export const getCoinGeckoPrices = async () => {
         // include rank by market cap
         results = arrSort(results, 'marketCapUSD', true)
             .map((entry, i) => [
-                symbols.get(entry.id).toUpperCase(),
+                coins.get(entry.id).toUpperCase(),
                 { ...entry, rank: i + 1 },
             ])
         return new Map(results)
     } catch (err) {
-        log(`Failed to retrieve price from CoinGecko. ${err}`, err)
+        log(debugTag, `Failed to retrieve price. ${err}`, err)
         return
     }
+}
+
+/**
+ * @name    getPriceHistory
+ * @summary get all available daily closing prices for a specific ticker
+ * 
+ * @param   {String}              symbol     Ticker symbol
+ * @param   {Date|String|Number}  dateFrom   (optional) Range start date. If string must be YYYY-MM-DD format.
+ *                                           Default/falsy: `"2009-01-01"`
+ * @param   {Date|String}  dateTo           (optional) Range end date. If string must be YYYY-MM-DD format.
+ *                                           Default/falsy: `new Date()`
+ * @param   {String}              vsCurrency (optional) Target currency.
+ *                                           Default: `usd`
+ * 
+ * @returns {Map}
+ */
+export const getPriceHistory = async (currencyId, coinId, dateFrom, dateTo, vsCurrency = 'usd') => {
+    const from = isValidNumber(dateFrom)
+        ? dateFrom
+        : parseInt(new Date(dateFrom || '2009-01-01').getTime() / 1000)
+    const to = isValidNumber(dateTo)
+        ? dateTo
+        : parseInt(new Date(dateTo || new Date()).getTime() / 1000)
+    const params = {
+        vs_currency: vsCurrency,
+        from: `${from}`,
+        to: `${to}`,
+    }
+    const result = await cgClient.coins
+        .fetchMarketChartRange(coinId, params)
+    const { error, market_caps, prices } = (result || {}).data || {}
+
+    if (error || !isArr(prices) || !isArr(market_caps)) {
+        log(result)
+        log(debugTag, params, `CoinID - ${coinId}: failed to retrieve price history. ${error || ''}`)
+        return
+    }
+
+    return prices.map(([ts, priceUsd]) => {
+        // YYYY-MM-DD
+        const date = new Date(ts)
+            .toISOString()
+            .substr(0, 10)
+        return [
+            getHistoryItemId(date, currencyId),
+            {
+                currencyId: currencyId,
+                date,
+                ratioOfExchange: usdToROE(priceUsd),
+                ts: new Date(ts)
+                    .toISOString(),
+            }
+        ]
+    })
+
+}
+
+/**
+ * 
+ * @param  {...any} args 
+ */
+export const updateCryptoDailyPrices = async (dbDailyHistory, dbCurrencies, updateDaily = true) => {
+    try {
+        const cgCoins = await getCoinsList()
+        const cryptoCoins = await dbCurrencies.search(
+            { type: cryptoType },
+            1, //99999,
+            0,
+            false,
+            { sort: ['name'] },
+        )
+
+        // mutually supported coins
+        const supportedCoins = cryptoCoins
+            .map(({ _id: currencyId, ticker }) => {
+                const { id: coinId } = cgCoins.get(ticker.toLowerCase()) || {}
+                return coinId && [currencyId, coinId]
+            })
+            .filter(Boolean)
+        const latestEntries = await PromisE.all(
+            supportedCoins.map(([currencyId]) =>
+                // retrieve latest entry for each currency
+                dbDailyHistory.find(
+                    { currencyId },
+                    { sort: [{ 'date': 'desc' }] },
+                )
+            )
+        )
+
+        log(debugTag, `Retrieving ${supportedCoins.length} daily crypto prices...`)
+        for (let i = 0; i < supportedCoins.length; i++) {
+            const [currencyId, coinId] = supportedCoins[i]
+
+            const { date } = latestEntries[i] || {}
+            const result = await getPriceHistory(
+                currencyId,
+                coinId,
+                date && new Date(date).toISOString().substr(0, 10)
+            )
+
+            log(debugTag, `${coinId} ${i + 1}/${supportedCoins.length}: saving ${result.length} daily crypto price entries`)
+            console.log(result)
+            //await dbDailyHistory.setAll(new Map(result), false)
+
+            if (i === supportedCoins.length - 1) continue
+            log(debugTag, 'Waiting 3 seconds to avoid being throttled')
+            await PromisE.delay(3000)
+        }
+
+        log(debugTag, 'Finished retrieving daily crypto prices')
+    } catch (err) {
+        log(debugTag, 'Failed to update daily crypto prices', err)
+    }
+
+    log(debugTag, 'Waiting 24 hours before next execution....')
+    updateDaily && setTimeout(() => updateCryptoDailyPrices(
+        dbDailyHistory,
+        dbCurrencies,
+        updateDaily,
+    ), 1000 * 60 * 60 * 24)
 }

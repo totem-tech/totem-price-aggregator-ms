@@ -1,6 +1,6 @@
 import PromisE from './utils/PromisE'
 import { isArr } from './utils/utils'
-import usdToROE from './usdToROE'
+import { usdToROE } from './utils'
 import log from './log'
 
 const CMC_URL = process.env.CMC_URL || ''
