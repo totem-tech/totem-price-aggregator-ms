@@ -201,13 +201,18 @@ export const updateStockDailyPrices = async (dbHistory, dbCurrencies, dbConf, up
 
                 const historyLastDay = dates.slice(-1)
                 const { ratioOfExchange } = entries[0][1]
+                // set most recet price as "current price" for the currency
                 currenciesUpdated.set(_id, {
                     ...currency,
                     ratioOfExchange,
                     priceUpdatedAt: `${historyLastDay}T00:00:00Z`,
                     source: sourceText,
                 })
-                historyLastDay && confsUpdated.set(_id, { historyLastDay })
+                // save last date for next execution
+                confsUpdated.set(_id, {
+                    ...confsUpdated.get(_id),
+                    historyLastDay,
+                })
 
                 return entries
             })
@@ -224,7 +229,7 @@ export const updateStockDailyPrices = async (dbHistory, dbCurrencies, dbConf, up
             // save daily prices
             log(`Saving ${priceEntries.length} daily stock price entries`)
             await dbHistory.setAll(new Map(priceEntries), true)
-            await dbConf.setAll()
+            await dbConf.setAll(confsUpdated, false)
             return priceEntries.length
         }
 

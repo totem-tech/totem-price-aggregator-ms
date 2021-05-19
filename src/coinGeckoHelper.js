@@ -281,7 +281,10 @@ export const updateCryptoDailyPrices = async (dbDailyHistory, dbCurrencies, dbCo
                 const newDate = result
                     .map(([_, { date }]) => date)
                     .sort()[0]
-                newDate && await dbConf.set(currencyId, { historyLastDay: newDate })
+                newDate && await dbConf.set(currencyId, {
+                    ...confsUpdated.get(currencyId),
+                    historyLastDay: newDate,
+                })
 
                 if (i === len - 1) continue // last item
             } catch (err) {
