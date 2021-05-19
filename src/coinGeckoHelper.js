@@ -9,7 +9,7 @@ import CouchDBStorage from './utils/CouchDBStorage'
 const coinsList = new DataStorage('coingecko-coins-list.json')
 const cgClient = new CoinGecko()
 const cryptoType = 'cryptocurrency'
-const moduleName = 'CoinGecho'
+const moduleName = 'CoinGecko'
 const debugTag = `[${moduleName}]`
 export const sourceText = 'coingecko.com'
 
@@ -169,24 +169,31 @@ export const getPriceHistory = async (currencyId, coinId, dateFrom, dateTo, vsCu
         log(debugTag, params, `CoinId - ${coinId}: failed to retrieve price history. ${error || ''}`)
         return
     }
-
+    dateFrom = dateFrom.toISOString().substr(0, 10)
     return prices
-        .map(([ts, priceUsd]) => {
+        .map(([ts, priceUsd], i) => {
             // YYYY-MM-DD
-            let date = new Date(ts)
+            let date = new Date(ts).toISOString()
+            if (date.substr(11, 2) > 22) {
+                // if price updated after 10PM set to next day
+                date = new Date(
+                    new Date(date.substr(0, 10)).getTime()
+                    + 1000 * 60 * 60 * 24
+                ).toISOString()
+            }
+            date = date.substr(0, 10)
             // exclude any data before the range start date (dateFrom)
             if (date < dateFrom) return
 
-            date = date.toISOString()
-                .substr(0, 10)
+            const [_, marketCapUSD] = market_caps.find(([mts]) => mts === ts) || []
             return [
                 getHistoryItemId(date, currencyId),
                 {
-                    currencyId: currencyId,
+                    currencyId,
                     date,
+                    marketCapUSD,
                     ratioOfExchange: usdToROE(priceUsd),
-                    ts: new Date(ts)
-                        .toISOString(),
+                    source: sourceText,
                 }
             ]
         })
@@ -205,7 +212,7 @@ export const getPriceHistory = async (currencyId, coinId, dateFrom, dateTo, vsCu
 export const updateCryptoDailyPrices = async (dbDailyHistory, dbCurrencies, updateDaily = true) => {
     const debugTag = `[${moduleName}] [Daily]`
     try {
-        log(debugTag, 'Started retrievign cyrpto daily prices')
+        log(debugTag, 'Started retrieving cyrpto daily prices')
         const cgCoins = await getCoinsList(false)
         const cryptoCoins = await dbCurrencies.search(
             { type: cryptoType },
@@ -222,14 +229,8 @@ export const updateCryptoDailyPrices = async (dbDailyHistory, dbCurrencies, upda
                 return coinId && [currencyId, coinId]
             })
             .filter(Boolean)
-        const len = supportedCoins.length
-        log(
-            debugTag,
-            !len
-                ? 'All coins are updated'
-                : `Retrieving ${len} daily crypto prices...`
-        )
 
+        const len = supportedCoins.length
         for (let i = 0; i < len; i++) {
             const [currencyId, coinId] = supportedCoins[i]
             const coinTag = `$${coinId} ${i + 1}/${len}:`

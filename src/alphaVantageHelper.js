@@ -111,7 +111,7 @@ export const getDailyPrice = async (symbol, outputsize = outputSize.compact, dat
     const data = result[dataKey]
     const { Note, Information } = result
     if (!isObj(data)) {
-        log(`$${symbol} request failed or invalid data received. Error message: ${Note || Information}`)
+        log(debugTag, `$${symbol} request failed or invalid data received. Error message: ${Note || Information}`)
     }
 
     return data
@@ -139,7 +139,7 @@ export const updateStockDailyPrices = async (dbHistory, dbCurrencies, updateDail
         const priceKey = '5. adjusted close'
         const stockCurrencies = await dbCurrencies.search(
             { type: 'stock' },
-            9999,
+            99999,
             0,
             false,
             { sort: ['ticker'] }, // sort by ticker
@@ -169,23 +169,29 @@ export const updateStockDailyPrices = async (dbHistory, dbCurrencies, updateDail
             )
             const currenciesUpdated = new Map()
             const dailyPriceEntries = results.map((result, i) => {
-                if (!result) return
                 const [currencyIndex] = batchData[i]
                 const currency = stockCurrencies[currencyIndex]
                 const { _id, priceUpdatedAt, ticker, type } = currency
+                if (!result) return log(debugTag, ticker, 'empty result received', result)
+
                 const lastDate = `${priceUpdatedAt || ''}`.substr(0, 10)
                 const dates = Object.keys(result)
-                    .filter(date => !lastDate || date > lastDate)
+                    .filter(date => {
+                        const isNew = !priceUpdatedAt || lastDate < date
+                        if (!isNew) log({ priceUpdatedAt, lastDate, isNew })
+                        return isNew
+                    })
 
                 // no update required
-                if (!dates.length) return console.log(ticker, 'ignored')
+                if (!dates.length) return log(debugTag, ticker, 'no new data available', result.length)
 
                 const entries = dates.map(date => ([
                     getHistoryItemId(date, ticker, type),
                     {
                         currencyId: _id,
                         date,
-                        ratioOfExchange: usdToROE(parseFloat(result[date][priceKey]) || 0)
+                        ratioOfExchange: usdToROE(parseFloat(result[date][priceKey]) || 0),
+                        source: sourceText,
                     },
                 ]))
 
@@ -202,26 +208,27 @@ export const updateStockDailyPrices = async (dbHistory, dbCurrencies, updateDail
                 .flat()
                 .filter(Boolean)
 
-            log(currenciesUpdated.size, 'currencies updated')
+            log(debugTag, currenciesUpdated.size, 'currencies updated')
             //update latest price of the currency entry
             currenciesUpdated.size && dbCurrencies.setAll(currenciesUpdated, false)
 
             // save daily prices
-            log(dailyPriceEntries.length, 'daily stock price entries saved')
+            log(debugTag, dailyPriceEntries.length, 'daily stock price entries saved')
             await dbHistory.setAll(new Map(dailyPriceEntries), true)
             return dailyPriceEntries.length
         }
 
-        const numBatches = parseInt(queryData.length / LIMIT_MINUTE)
+        const len = queryData.length
+        const numBatches = parseInt(len / LIMIT_MINUTE)
         let totalSaved = 0
-        log(`Updating ${queryData.length} stocks`)
+        log(debugTag, `Updating ${len} stocks`)
         for (let i = 0; i < numBatches; i++) {
             const startIndex = i * LIMIT_MINUTE
             const endIndex = startIndex + LIMIT_MINUTE
             const batchData = queryData.slice(startIndex, endIndex)
             const batchTickers = batchData.map(ar => ' $' + ar[1])
 
-            log(debugTag, `Retrieving stock prices ${startIndex + 1} to ${endIndex}:${batchTickers}`)
+            log(debugTag, `Retrieving stock prices ${startIndex + 1} to ${endIndex}/${len}:${batchTickers}`)
             try {
                 const numSaved = await processNextBatch(batchData)
                 totalSaved += numSaved || 0
