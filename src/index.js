@@ -18,11 +18,14 @@ const dbDailyHistory = new CouchDBStorage(null, 'currency_price_history_daily')
 // contract list: https://docs.chain.link/docs/ethereum-addresses
 const contracts = new DataStorage('currency-contract-address.json', true)
 const limit = 99999 // max number of currencies
+const typeCryto = 'cryptocurrency'
+const typeFiat = 'fiat'
 
 const updateLatestPrices = async () => {
+    const debugTag = '[UpdateLatest]'
     try {
-        log('Execution started')
-        log('Retrieving list of ABIs from database...')
+        log(debugTag, 'Execution started')
+        log(debugTag, 'Retrieving list of ABIs from database...')
         // initiate global database connection
         await getConnection(CouchDB_URL)
         const ABIs = await dbABIs.getAll(null, true, limit)
@@ -30,18 +33,18 @@ const updateLatestPrices = async () => {
         // retrieve and store missing ABIs
         for (const [ticker, value] of contracts.toArray()) {
             let { contractAddress, decimals = 8 } = value || {}
-            log(`Processing ${ticker} ${contractAddress}...`)
+            log(debugTag, `Processing ${ticker} ${contractAddress}...`)
             if (!ticker || !isStr(ticker)) continue // ignore if ticker is not provided or empty string
 
             const { ABI, contractAddress: ca } = await ABIs.get(ticker) || {}
             if (!isArr(ABI) || contractAddress !== ca) {
-                log(`Retrieving ABI...`)
+                log(debugTag, `Retrieving ABI...`)
                 // Retrieve ABI using Etherscan API
                 const abiResult = await getAbi(contractAddress)
                 ABI = JSON.parse(abiResult.result)
                 if (!isArr(ABI)) throw new Error('Invalid ABI received!')
 
-                log(`Saving ABI to database...`)
+                log(debugTag, `Saving ABI to database...`)
                 const entry = { active: true, ...value, decimals, ABI }
                 dbABIs.set(ticker, entry)
                 // for local use
@@ -50,16 +53,16 @@ const updateLatestPrices = async () => {
             }
         }
 
-        log('Retrieving list of currencies from database...')
+        log(debugTag, 'Retrieving list of currencies from database...')
         const currenciesArr = Array.from(
             await dbCurrencies.getAll(null, true, limit)
         ).filter(([_, { type }]) =>
-            ['cryptocurrency', 'fiat'].includes(type)
+            [typeCryto, typeFiat].includes(type)
         )
         // make currencies easily searchable
         const currenciesMap = new Map(
             currenciesArr
-                .filter(([_, { type }]) => ['cryptocurrency', 'fiat'].includes(type))
+                .filter(([_, { type }]) => [typeCryto, typeFiat].includes(type))
                 .map(([_, value]) => [value.ticker, value])
         )
 
@@ -67,7 +70,10 @@ const updateLatestPrices = async () => {
         // Coin Market Cap
         const cmcPrices = (await getCMCPrices()) || new Map()
         // Coin Gecko
-        const cgPrices = (await getCoinGeckoPrices()) || new Map()
+        const cgSymbols = currenciesArr
+            .map(([_, x]) => x.type === typeCryto && x.ticker)
+            .filter(Boolean)
+        const cgPrices = await getCoinGeckoPrices(cgSymbols)
         // ChainLink smart contracts
         const chainlinkPrices = await getChainLinkPrices(ABIs, currenciesMap)
 
@@ -94,9 +100,10 @@ const updateLatestPrices = async () => {
 
             if (ticker === 'USD') {
                 // make sure USD is never changed by mistake
-                roe = 100000000
-                ts = undefined
-                source = undefined
+                // roe = 100000000
+                // ts = undefined
+                // source = undefined
+                return
             }
             // ignore if price hasn't changed
             if (`${roe}` === `${ratioOfExchange}`) return
@@ -113,30 +120,28 @@ const updateLatestPrices = async () => {
                 }
             ]
         }).filter(Boolean)
-        if (updatedCurrencies.length) {
-            log('Updating database...',)
+        const len = updatedCurrencies.length
+        if (len) {
+            log(debugTag, `Updating ${len} currencies...`)
             await dbCurrencies.setAll(new Map(updatedCurrencies), false)
         }
-        log(`${updatedCurrencies.length} currencies updated`)
     } catch (err) {
         const incidentID = logIncident(err, incidentID)
-        log(`IncidentID: ${incidentID}: execution ended with error \n${err.stack}`)
+        log(debugTag, `IncidentID: ${incidentID}: execution ended with error \n${err.stack}`)
     }
 
-    log('Execution complete')
+    log(debugTag, 'Execution complete')
     if (!cycleDurationMin) return
 
     const delay = cycleDurationMin * 60 * 1000
-    log(`Waiting ${cycleDurationMin} minutes before next execution`)
+    log(debugTag, `Waiting ${cycleDurationMin} minutes before next execution`)
     setTimeout(updateLatestPrices, delay)
 }
 
 // initiate global database connection
 getConnection(CouchDB_URL)
     .then(async () => {
-        updateLatestPrices()
-        // 
+        await updateLatestPrices()
         updateStockDailyPrices(dbDailyHistory, dbCurrencies, true)
         updateCryptoDailyPrices(dbDailyHistory, dbCurrencies, true)
-
     })
