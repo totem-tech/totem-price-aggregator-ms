@@ -10,7 +10,8 @@ const API_BASE_URL = 'https://www.alphavantage.co/query?'
 const API_KEY = process.env.AA_API_Key
 const LIMIT_DAY = parseInt(process.env.AA_Limit_Per_Day) || 500
 const LIMIT_MINUTE = parseInt(process.env.AA_Limit_Per_Minute) || 5
-const debugTag = '[AlphaVantage]'
+const moduleName = 'AlphaVantage'
+const debugTag = `[${moduleName}]`
 export const sourceText = 'alphavantage.co'
 // 100 days in milliseconds
 const ms100Days = 1000 * 60 * 60 * 24 * 100
@@ -124,6 +125,7 @@ export const getDailyPrice = async (symbol, outputsize = outputSize.compact, dat
  * @param   {Boolean}           updateDaily     Default: `true`
  */
 export const updateStockDailyPrices = async (dbHistory, dbCurrencies, updateDaily = true) => {
+    const debugTag = `[${moduleName}] [Daily]`
     try {
         log(
             debugTag,
@@ -176,7 +178,7 @@ export const updateStockDailyPrices = async (dbHistory, dbCurrencies, updateDail
                     .filter(date => !lastDate || date > lastDate)
 
                 // no update required
-                if (!dates.length) return console.log('AA: ', ticker, 'ignored')
+                if (!dates.length) return console.log(ticker, 'ignored')
 
                 const entries = dates.map(date => ([
                     getHistoryItemId(date, ticker, type),

@@ -9,7 +9,8 @@ import CouchDBStorage from './utils/CouchDBStorage'
 const coinsList = new DataStorage('coingecko-coins-list.json')
 const cgClient = new CoinGecko()
 const cryptoType = 'cryptocurrency'
-const debugTag = '[CoinGecko]'
+const moduleName = 'CoinGecho'
+const debugTag = `[${moduleName}]`
 export const sourceText = 'coingecko.com'
 
 /**
@@ -129,27 +130,28 @@ export const getLatestPrices = async (symbols = []) => {
  * @name    getPriceHistory
  * @summary get all available daily closing prices for a specific ticker
  * 
- * @param   {String}              symbol     Ticker symbol
- * @param   {Date|String|Number}  dateFrom   (optional) Range start date. If string must be YYYY-MM-DD format.
- *                                           Default/falsy: `"2009-01-01"`
- * @param   {Date|String}  dateTo           (optional) Range end date. If string must be YYYY-MM-DD format.
- *                                           Default/falsy: `new Date()`
- * @param   {String}              vsCurrency (optional) Target currency.
- *                                           Default: `usd`
+ * @param   {String}       symbol       Ticker symbol
+ * @param   {Date|String}  dateFrom     (optional) Range start date. If string must be YYYY-MM-DD format.
+ *                                      Default/falsy: `"2009-01-01"`
+ * @param   {Date|String}  dateTo       (optional) Range end date. If string must be YYYY-MM-DD format.
+ *                                      Default/falsy: `new Date()`
+ * @param   {String}       vsCurrency   (optional) Target currency.
+ *                                      Default: `usd`
  * 
  * @returns {Map}
  */
 export const getPriceHistory = async (currencyId, coinId, dateFrom, dateTo, vsCurrency = 'usd') => {
-    const from = isValidNumber(dateFrom)
+    dateFrom = new Date(dateFrom || '2009-01-01')
+    const to = new Date(dateTo || new Date())
+    const days91 = 1000 * 60 * 60 * 24 * 91 // 91 days in milliseconds
+    // make sure date range is 90+ days to avoid getting hourly rates
+    const from = (to - dateFrom) > days91
         ? dateFrom
-        : parseInt(new Date(dateFrom || '2009-01-01').getTime() / 1000)
-    const to = isValidNumber(dateTo)
-        ? dateTo
-        : parseInt(new Date(dateTo || new Date()).getTime() / 1000)
+        : new Date(to - days91)
     const params = {
         vs_currency: vsCurrency,
-        from: `${from}`,
-        to: `${to}`,
+        from: `${parseInt(from.getTime() / 1000)}`,
+        to: `${parseInt(to.getTime() / 1000)}`,
     }
     const result = await cgClient.coins
         .fetchMarketChartRange(coinId, params)
@@ -157,39 +159,49 @@ export const getPriceHistory = async (currencyId, coinId, dateFrom, dateTo, vsCu
 
     if (error || !isArr(prices) || !isArr(market_caps)) {
         log(result)
-        log(debugTag, params, `CoinID - ${coinId}: failed to retrieve price history. ${error || ''}`)
+        log(debugTag, params, `CoinId - ${coinId}: failed to retrieve price history. ${error || ''}`)
         return
     }
 
-    return prices.map(([ts, priceUsd]) => {
-        // YYYY-MM-DD
-        const date = new Date(ts)
-            .toISOString()
-            .substr(0, 10)
-        return [
-            getHistoryItemId(date, currencyId),
-            {
-                currencyId: currencyId,
-                date,
-                ratioOfExchange: usdToROE(priceUsd),
-                ts: new Date(ts)
-                    .toISOString(),
-            }
-        ]
-    })
+    return prices
+        .map(([ts, priceUsd]) => {
+            // YYYY-MM-DD
+            let date = new Date(ts)
+            // exclude any data before the range start date (dateFrom)
+            if (date < dateFrom) return
+
+            date = date.toISOString()
+                .substr(0, 10)
+            return [
+                getHistoryItemId(date, currencyId),
+                {
+                    currencyId: currencyId,
+                    date,
+                    ratioOfExchange: usdToROE(priceUsd),
+                    ts: new Date(ts)
+                        .toISOString(),
+                }
+            ]
+        })
+        .filter(Boolean)
 
 }
 
 /**
+ * @name    updateCryptoDailyPrices
+ * @summary retrieve historical daily closing prices of all supported cryptocurrencies from CoinGecko
  * 
- * @param  {...any} args 
+ * @param   {CouchDBStorage}    dbDailyHistory
+ * @param   {CouchDBStorage}    dbCurrencies
+ * @param   {Boolean}           updateDaily
  */
 export const updateCryptoDailyPrices = async (dbDailyHistory, dbCurrencies, updateDaily = true) => {
+    const debugTag = `[${moduleName}] [Daily]`
     try {
         const cgCoins = await getCoinsList()
         const cryptoCoins = await dbCurrencies.search(
             { type: cryptoType },
-            1, //99999,
+            99999,
             0,
             false,
             { sort: ['name'] },
@@ -211,28 +223,44 @@ export const updateCryptoDailyPrices = async (dbDailyHistory, dbCurrencies, upda
                 )
             )
         )
+        // coins that needs to be updated
+        const coinsToFetch = supportedCoins
+            .map(([currencyId, coinId], i) => {
+                let { date } = latestEntries[i] || {}
+                date = date && new Date(date).toISOString().substr(0, 10)
 
-        log(debugTag, `Retrieving ${supportedCoins.length} daily crypto prices...`)
-        for (let i = 0; i < supportedCoins.length; i++) {
-            const [currencyId, coinId] = supportedCoins[i]
+                // ignore coin if today's (at 00:00 0'clock) rate has already been retrieved
+                if (date && date === new Date().toISOString().substr(0, 10)) return
 
-            const { date } = latestEntries[i] || {}
-            const result = await getPriceHistory(
-                currencyId,
-                coinId,
-                date && new Date(date).toISOString().substr(0, 10)
+                return [currencyId, coinId, date]
+            })
+            .filter(Boolean)
+        const len = coinsToFetch.length
+        log(
+            debugTag,
+            !len
+                ? 'All coins are updated'
+                : `Retrieving ${len} daily crypto prices...`
+        )
+
+        for (let i = 0; i < len; i++) {
+            const [currencyId, coinId, date] = coinsToFetch[i]
+            const result = await getPriceHistory(currencyId, coinId, date)
+
+            log(
+                debugTag,
+                `$${coinId} ${i + 1}/${len}:`,
+                `saving ${result.length} daily crypto price entries`
             )
+            await dbDailyHistory.setAll(new Map(result), false)
 
-            log(debugTag, `${coinId} ${i + 1}/${supportedCoins.length}: saving ${result.length} daily crypto price entries`)
-            console.log(result)
-            //await dbDailyHistory.setAll(new Map(result), false)
+            if (i === len - 1) continue // last item
 
-            if (i === supportedCoins.length - 1) continue
             log(debugTag, 'Waiting 3 seconds to avoid being throttled')
             await PromisE.delay(3000)
         }
 
-        log(debugTag, 'Finished retrieving daily crypto prices')
+        len && log(debugTag, 'Finished retrieving daily crypto prices')
     } catch (err) {
         log(debugTag, 'Failed to update daily crypto prices', err)
     }
