@@ -111,7 +111,12 @@ export const getDailyPrice = async (symbol, outputsize = outputSize.compact, dat
     const data = result[dataKey]
     const { Note, Information } = result
     if (!isObj(data)) {
-        log(`$${symbol} request failed or invalid data received. Error message: ${Note || Information}`)
+        const err = Note || Information || ''
+        if (`${err}`.includes('Thank you for using Alpha Vantage! Our standard API call frequency is')) {
+            logIncident(debugTag, 'Ran out of per-minute or daily credits!')
+        } else {
+            log(`$${symbol} request failed or invalid data received. Error message: ${Note || Information}`)
+        }
     }
 
     return data
@@ -199,19 +204,19 @@ export const updateStockDailyPrices = async (dbHistory, dbCurrencies, dbConf, up
                     },
                 ]))
 
-                const historyLastDay = dates.slice(-1)
+                const newDate = dates.slice(-1)[0]
                 const { ratioOfExchange } = entries[0][1]
                 // set most recet price as "current price" for the currency
                 currenciesUpdated.set(_id, {
                     ...currency,
                     ratioOfExchange,
-                    priceUpdatedAt: `${historyLastDay}T00:00:00Z`,
+                    priceUpdatedAt: `${newDate}T00:00:00Z`,
                     source: sourceText,
                 })
                 // save last date for next execution
                 confsUpdated.set(_id, {
                     ...confsUpdated.get(_id),
-                    historyLastDay,
+                    historyLastDay: newDate,
                 })
 
                 return entries

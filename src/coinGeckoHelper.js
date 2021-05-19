@@ -235,13 +235,13 @@ export const updateCryptoDailyPrices = async (dbDailyHistory, dbCurrencies, dbCo
                 const { id: coinId } = cgCoins.get(ticker.toLowerCase()) || {}
                 if (!coinId) return
 
-                const { historyLastDay } = allConf.get(currencyId) || {}
+                const { historyLastDay: date } = allConf.get(currencyId) || {}
                 const today = new Date()
                     .toISOString()
                     .substr(0, 10)
-                if (historyLastDay === today) return
+                if (date && date >= today) return
 
-                return [currencyId, coinId, historyLastDay]
+                return [currencyId, coinId, date]
             })
             .filter(Boolean)
 
@@ -249,40 +249,19 @@ export const updateCryptoDailyPrices = async (dbDailyHistory, dbCurrencies, dbCo
         log(debugTag, `Fetching daily prices for ${len} currencies`)
 
         for (let i = 0; i < len; i++) {
+            const [currencyId, coinId, historyLastDay] = coinsToFetch[i]
+            const coinTag = `$${coinId} ${i + 1}/${len}:`
             try {
-                const [currencyId, coinId, historyLastDay] = coinsToFetch[i]
-                const coinTag = `$${coinId} ${i + 1}/${len}:`
-
-                // retrieve latest entry for each currency
-
-                // const { date } = (await dbDailyHistory.find(
-                //     { currencyId },
-                //     {
-                //         sort: [
-                //             { date: 'desc' },
-                //             { currencyId: 'desc' }
-                //         ]
-                //     },
-                // )) || {}
-                // const isToday = historyLastDay && new Date(historyLastDay)
-                //     .toISOString()
-                //     .substr(0, 10) === new Date()
-                //         .toISOString()
-                //         .substr(0, 10)
-
-                // if (historyLastDay && isToday) {
-                //     log(debugTag, coinTag, 'already updated')
-                //     continue
-                // }
                 const result = await getPriceHistory(currencyId, coinId, historyLastDay)
 
                 log(debugTag, coinTag, `saving ${result.length} daily crypto price entries`)
                 await dbDailyHistory.setAll(new Map(result), false)
-                const newDate = result
+                const dates = result
                     .map(([_, { date }]) => date)
-                    .sort()[0]
+
+                const newDate = dates.sort().slice(-1)[0]
                 newDate && await dbConf.set(currencyId, {
-                    ...confsUpdated.get(currencyId),
+                    ...allConf.get(currencyId),
                     historyLastDay: newDate,
                 })
 

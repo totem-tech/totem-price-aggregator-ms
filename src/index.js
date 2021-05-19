@@ -142,7 +142,7 @@ const updateLatestPrices = async () => {
 // initiate global database connection
 getConnection(CouchDB_URL)
     .then(async () => {
-        // await updateLatestPrices()
-        updateStockDailyPrices(dbDailyHistory, dbCurrencies, dbConf, true)
-        // updateCryptoDailyPrices(dbDailyHistory, dbCurrencies, dbConf, true)
+        await updateLatestPrices()
+        // updateStockDailyPrices(dbDailyHistory, dbCurrencies, dbConf, true)
+        updateCryptoDailyPrices(dbDailyHistory, dbCurrencies, dbConf, true)
     })
