@@ -6,6 +6,7 @@ import log from './log'
 import { getHistoryItemId, usdToROE } from './utils'
 import CouchDBStorage from './utils/CouchDBStorage'
 
+const delaySeconds = parseInt(process.env.CG_Throttle_Delay_Seconds || 10)
 const coinsList = new DataStorage('coingecko-coins-list.json')
 const cgClient = new CoinGecko()
 const cryptoType = 'cryptocurrency'
@@ -207,9 +208,10 @@ export const getPriceHistory = async (currencyId, coinId, dateFrom, dateTo, vsCu
  * 
  * @param   {CouchDBStorage}    dbDailyHistory
  * @param   {CouchDBStorage}    dbCurrencies
+ * @param   {CouchDBStorage}    dbConf
  * @param   {Boolean}           updateDaily
  */
-export const updateCryptoDailyPrices = async (dbDailyHistory, dbCurrencies, updateDaily = true) => {
+export const updateCryptoDailyPrices = async (dbDailyHistory, dbCurrencies, dbConf, updateDaily = true) => {
     const debugTag = `[${moduleName}] [Daily]`
     try {
         log(debugTag, 'Started retrieving cyrpto daily prices')
@@ -222,52 +224,72 @@ export const updateCryptoDailyPrices = async (dbDailyHistory, dbCurrencies, upda
             { sort: [{ 'name': 'desc' }] },
         )
 
+        // aggregator configurations including last dates for each currency
+        const allConf = await dbConf.getAll(
+            cryptoCoins.map(({ _id }) => _id),
+            true
+        )
         // mutually supported coins
-        const supportedCoins = cryptoCoins
+        const coinsToFetch = cryptoCoins
             .map(({ _id: currencyId, ticker }) => {
                 const { id: coinId } = cgCoins.get(ticker.toLowerCase()) || {}
-                return coinId && [currencyId, coinId]
+                if (!coinId) return
+
+                const { historyLastDay } = allConf.get(currencyId) || {}
+                const today = new Date()
+                    .toISOString()
+                    .substr(0, 10)
+                if (historyLastDay === today) return
+
+                return [currencyId, coinId, historyLastDay]
             })
             .filter(Boolean)
 
-        const len = supportedCoins.length
+        const len = coinsToFetch.length
+        log(debugTag, `Fetching daily prices for ${len} currencies`)
+
         for (let i = 0; i < len; i++) {
-            const [currencyId, coinId] = supportedCoins[i]
-            const coinTag = `$${coinId} ${i + 1}/${len}:`
-
             try {
-                // retrieve latest entry for each currency
-                const { date } = (await dbDailyHistory.find(
-                    { currencyId },
-                    {
-                        sort: [
-                            { date: 'desc' },
-                            { currencyId: 'desc' }
-                        ]
-                    },
-                )) || {}
-                const isToday = date && new Date(date)
-                    .toISOString()
-                    .substr(0, 10) === new Date()
-                        .toISOString()
-                        .substr(0, 10)
+                const [currencyId, coinId, historyLastDay] = coinsToFetch[i]
+                const coinTag = `$${coinId} ${i + 1}/${len}:`
 
-                if (date && isToday) {
-                    log(debugTag, coinTag, 'already updated')
-                    continue
-                }
-                const result = await getPriceHistory(currencyId, coinId, date)
+                // retrieve latest entry for each currency
+
+                // const { date } = (await dbDailyHistory.find(
+                //     { currencyId },
+                //     {
+                //         sort: [
+                //             { date: 'desc' },
+                //             { currencyId: 'desc' }
+                //         ]
+                //     },
+                // )) || {}
+                // const isToday = historyLastDay && new Date(historyLastDay)
+                //     .toISOString()
+                //     .substr(0, 10) === new Date()
+                //         .toISOString()
+                //         .substr(0, 10)
+
+                // if (historyLastDay && isToday) {
+                //     log(debugTag, coinTag, 'already updated')
+                //     continue
+                // }
+                const result = await getPriceHistory(currencyId, coinId, historyLastDay)
 
                 log(debugTag, coinTag, `saving ${result.length} daily crypto price entries`)
                 await dbDailyHistory.setAll(new Map(result), false)
+                const newDate = result
+                    .map(([_, { date }]) => date)
+                    .sort()[0]
+                newDate && await dbConf.set(currencyId, { historyLastDay: newDate })
 
                 if (i === len - 1) continue // last item
             } catch (err) {
                 log(debugTag, coinTag, err)
             }
 
-            log(debugTag, 'Waiting 15 seconds to avoid being throttled')
-            await PromisE.delay(15000)
+            log(debugTag, `Waiting ${delaySeconds} seconds to avoid being throttled`)
+            await PromisE.delay(delaySeconds * 1000)
         }
 
         len && log(debugTag, 'Finished retrieving daily crypto prices')

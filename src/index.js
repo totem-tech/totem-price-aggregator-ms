@@ -15,6 +15,7 @@ const cycleDurationMin = parseInt(process.env.cycleDurationMin || 0)
 const dbCurrencies = new CouchDBStorage(null, 'currencies')
 const dbABIs = new CouchDBStorage(null, 'currencies_abi')
 const dbDailyHistory = new CouchDBStorage(null, 'currency_price_history_daily')
+const dbConf = new CouchDBStorage(null, 'currencies_aggregator_conf')
 // contract list: https://docs.chain.link/docs/ethereum-addresses
 const contracts = new DataStorage('currency-contract-address.json', true)
 const limit = 99999 // max number of currencies
@@ -142,6 +143,6 @@ const updateLatestPrices = async () => {
 getConnection(CouchDB_URL)
     .then(async () => {
         // await updateLatestPrices()
-        updateStockDailyPrices(dbDailyHistory, dbCurrencies, true)
-        // updateCryptoDailyPrices(dbDailyHistory, dbCurrencies, true)
+        updateStockDailyPrices(dbDailyHistory, dbCurrencies, dbConf, true)
+        // updateCryptoDailyPrices(dbDailyHistory, dbCurrencies, dbConf, true)
     })
