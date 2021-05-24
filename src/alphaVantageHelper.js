@@ -206,8 +206,7 @@ export const updateStockDailyPrices = async (dbHistory, dbCurrencies, dbConf, up
                     },
                 ]))
 
-                const newDate = dates.slice(-1)[0]
-                const { ratioOfExchange } = entries[0][1]
+                const { date: newDate, ratioOfExchange } = entries.slice(-1)[0][1]
                 // set most recet price as "current price" for the currency
                 currenciesUpdated.set(_id, {
                     ...currency,
