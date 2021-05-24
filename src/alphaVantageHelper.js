@@ -94,6 +94,8 @@ export const fetchSupportedCryptoList = async (force = false) => {
  */
 export const getDailyPrice = async (symbol, outputsize = outputSize.compact, dataType = resultType.json) => {
     if (!symbol) throw new Error('Ticker required')
+    if (!API_KEY) throw new Error('AlphaAdvantage API required')
+
     const debugTag = `[${moduleName}] [Daily]`
     const dataKey = 'Time Series (Daily)'
     const params = {
