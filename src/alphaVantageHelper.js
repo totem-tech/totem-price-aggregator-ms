@@ -95,7 +95,6 @@ export const fetchSupportedCryptoList = async (force = false) => {
 export const getDailyPrice = async (symbol, outputsize = outputSize.compact, dataType = resultType.json) => {
     if (!symbol) throw new Error('Ticker required')
     const debugTag = `[${moduleName}] [Daily]`
-    const log = logWithTag(debugTag)
     const dataKey = 'Time Series (Daily)'
     const params = {
         apikey: API_KEY,
@@ -112,10 +111,11 @@ export const getDailyPrice = async (symbol, outputsize = outputSize.compact, dat
     const { Note, Information } = result
     if (!isObj(data)) {
         const err = Note || Information || ''
-        if (`${err}`.includes('Thank you for using Alpha Vantage! Our standard API call frequency is')) {
-            logIncident(debugTag, 'Ran out of per-minute or daily credits!')
+        const limitExceeded = `${err}`.includes('Thank you for using Alpha Vantage!')
+        if (limitExceeded) {
+            logIncident(debugTag, 'Exceeded per-minute or daily requests!', err)
         } else {
-            log(`$${symbol} request failed or invalid data received. Error message: ${Note || Information}`)
+            logIncident(debugTag, `$${symbol} request failed or invalid data received. Error message: ${Note || Information}`)
         }
     }
 
@@ -254,9 +254,9 @@ export const updateStockDailyPrices = async (dbHistory, dbCurrencies, dbConf, up
                 totalSaved += numSaved || 0
             } catch (err) {
                 if (`${err}`.includes('Thank you for using Alpha Vantage! Our standard API call frequency is')) {
-                    logIncident(debugTag, 'Ran out of per-minute or daily credits!')
+                    logIncident(debugTag, 'Exceeded per-minute or daily requests!', err)
                 } else {
-                    logIncident(debugTag, 'Failed to retrieve daily stock prices of batch: ', batchTickers)
+                    logIncident(debugTag, 'Failed to retrieve daily stock prices of batch: ', batchTickers, err)
                 }
             }
 

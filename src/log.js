@@ -17,12 +17,16 @@ export default function log(...args) {
  * @name    logIncident
  * @summary Send message to discord
  * 
- * @param   {*}      message
- * @param   {String} incidentID (optional) if undefined, will generate a new UUID
+ * @param   {...}      message
  * 
- * @returns {Strirng} incidentID
+ * @returns {Strirng} incidentID (a new UUID)
  */
-export const logIncident = async (message, incidentID = uuidv1()) => {
+export const logIncident = async (...message) => {
+    const incidentID = uuidv1()
+    message = [...message]
+        .map(x => `${x || ''}`)
+        .filter(Boolean)
+        .join(' ')
     const content = '>>> ' + [
         `**IncidentID:** ${incidentID}`,
         '**Error:** ' + `${message}`.replace('Error:', ''),
