@@ -213,6 +213,7 @@ export const getPriceHistory = async (currencyId, coinId, dateFrom, dateTo, vsCu
  * @param   {Boolean}           updateDaily
  */
 export const updateCryptoDailyPrices = async (dbDailyHistory, dbCurrencies, dbConf, updateDaily = true) => {
+    console.log({ active, CG_Active: process.env.CG_Active })
     if (!active) return
 
     const debugTag = `[${moduleName}] [Daily]`
