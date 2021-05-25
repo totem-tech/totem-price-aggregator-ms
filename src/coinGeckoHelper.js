@@ -213,9 +213,9 @@ export const getPriceHistory = async (currencyId, coinId, dateFrom, dateTo, vsCu
  * @param   {Boolean}           updateDaily
  */
 export const updateCryptoDailyPrices = async (dbDailyHistory, dbCurrencies, dbConf, updateDaily = true) => {
-    if (!active) return
-
     const debugTag = `[${moduleName}] [Daily]`
+
+    if (!active) return log(debugTag, 'price updates disabled')
     try {
         log(debugTag, 'Started retrieving cyrpto daily prices')
         const cgCoins = await getCoinsList(false)

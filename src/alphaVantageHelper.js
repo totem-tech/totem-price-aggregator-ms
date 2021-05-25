@@ -134,7 +134,7 @@ export const getDailyPrice = async (symbol, outputsize = outputSize.compact, dat
  */
 export const updateStockDailyPrices = async (dbHistory, dbCurrencies, dbConf, updateDaily = true) => {
     const log = logWithTag(`${debugTag} [Daily]`)
-    if (!API_KEY) return log('daily price updates disabled')
+    if (!API_KEY) return log('price updates disabled')
 
     try {
         log(
