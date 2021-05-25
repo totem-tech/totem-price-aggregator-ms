@@ -195,7 +195,7 @@ export const updateStockDailyPrices = async (dbHistory, dbCurrencies, dbConf, up
                     .sort() // sort ascending
 
                 // no update required
-                if (!dates.length) return log(ticker, 'no new data available')
+                if (!dates.length) return log(`$${ticker}: no new data received after ${lastDate}`)
 
                 const entries = dates.map(date => ([
                     getHistoryItemId(date, ticker, type),
