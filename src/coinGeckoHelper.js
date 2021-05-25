@@ -6,7 +6,8 @@ import log from './log'
 import { getHistoryItemId, usdToROE } from './utils'
 import CouchDBStorage from './utils/CouchDBStorage'
 
-const delaySeconds = parseInt(process.env.CG_Throttle_Delay_Seconds || 10)
+const active = process.env.CG_Active !== 'false'
+const delaySeconds = parseInt(process.env.CG_Throttle_Delay_Seconds) || 10
 const coinsList = new DataStorage('coingecko-coins-list.json')
 const cgClient = new CoinGecko()
 const cryptoType = 'cryptocurrency'
@@ -212,6 +213,8 @@ export const getPriceHistory = async (currencyId, coinId, dateFrom, dateTo, vsCu
  * @param   {Boolean}           updateDaily
  */
 export const updateCryptoDailyPrices = async (dbDailyHistory, dbCurrencies, dbConf, updateDaily = true) => {
+    if (!active) return
+
     const debugTag = `[${moduleName}] [Daily]`
     try {
         log(debugTag, 'Started retrieving cyrpto daily prices')

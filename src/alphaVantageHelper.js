@@ -2,8 +2,8 @@ import { csvToArr } from './utils/convert'
 import CouchDBStorage, { isCouchDBStorage } from './utils/CouchDBStorage'
 import DataStorage from './utils/DataStorage'
 import PromisE from './utils/PromisE'
-import { isArr, isDate, isObj, isValidDate, mapSort, objToUrlParams } from './utils/utils'
-import log, { logIncident, logWithTag } from './log'
+import { isObj, isValidDate, objToUrlParams } from './utils/utils'
+import { logIncident, logWithTag } from './log'
 import { getHistoryItemId, usdToROE } from './utils'
 
 const API_BASE_URL = 'https://www.alphavantage.co/query?'
@@ -96,7 +96,7 @@ export const getDailyPrice = async (symbol, outputsize = outputSize.compact, dat
     if (!symbol) throw new Error('Ticker required')
     if (!API_KEY) throw new Error('AlphaAdvantage API required')
 
-    const debugTag = `[${moduleName}] [Daily]`
+    const debugTag = `${debugTag} [Daily]`
     const dataKey = 'Time Series (Daily)'
     const params = {
         apikey: API_KEY,
@@ -133,8 +133,8 @@ export const getDailyPrice = async (symbol, outputsize = outputSize.compact, dat
  * @param   {Boolean}           updateDaily     Default: `true`
  */
 export const updateStockDailyPrices = async (dbHistory, dbCurrencies, dbConf, updateDaily = true) => {
-    const debugTag = `[${moduleName}] [Daily]`
-    const log = logWithTag(debugTag)
+    const log = logWithTag(`${debugTag} [Daily]`)
+    if (!API_KEY) return log('Missing AlphaVantage API_KEY')
     try {
         log(
             'Started retrieving daily stock prices.',
@@ -235,6 +235,8 @@ export const updateStockDailyPrices = async (dbHistory, dbCurrencies, dbConf, up
             // save daily prices
             log(`Saving ${priceEntries.length} daily stock price entries`)
             await dbHistory.setAll(new Map(priceEntries), true)
+            // save daily prices
+            log(`Updating ${confsUpdated.size} config entires`)
             await dbConf.setAll(confsUpdated, false)
             return priceEntries.length
         }
@@ -254,11 +256,12 @@ export const updateStockDailyPrices = async (dbHistory, dbCurrencies, dbConf, up
                 const numSaved = await processNextBatch(batchData)
                 totalSaved += numSaved || 0
             } catch (err) {
-                if (`${err}`.includes('Thank you for using Alpha Vantage! Our standard API call frequency is')) {
-                    logIncident(debugTag, 'Exceeded per-minute or daily requests!', err)
-                } else {
-                    logIncident(debugTag, 'Failed to retrieve daily stock prices of batch: ', batchTickers, err)
-                }
+                logIncident(
+                    `${debugTag} [Daily]`,
+                    'Failed to retrieve daily stock prices of batch: ',
+                    batchTickers,
+                    err
+                )
             }
 
             if (i === numBatches - 1) continue
