@@ -134,7 +134,8 @@ export const getDailyPrice = async (symbol, outputsize = outputSize.compact, dat
  */
 export const updateStockDailyPrices = async (dbHistory, dbCurrencies, dbConf, updateDaily = true) => {
     const log = logWithTag(`${debugTag} [Daily]`)
-    if (!API_KEY) return log('Missing AlphaVantage API_KEY')
+    if (!API_KEY) return log('daily price updates disabled')
+
     try {
         log(
             'Started retrieving daily stock prices.',

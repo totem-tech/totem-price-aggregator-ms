@@ -5,11 +5,13 @@
 #git submodule update --recursive --remote
 
 # Start application
+__AA_INFO__="set empty string on AA_API_KEY to disable AlphaVantage daily price updates."\
 AA_API_Key="string: alpha advantage API key" \
 AA_Limit_Per_Day="number: default= 500" \
 AA_Limit_Per_Minute="number: default = 5" \
 CG_Active="boolean: use `false` to disable automated CoinGecko daily price retrieval. Default: true" \
 CG_Throttle_Delay_Seconds="10" \
+__CMC_INFO__="To disable CoinMarketCap use empty string on CMC_URL" \
 CMC_URL="string: (optional) CMC API base URL. For sandbox use: https://sandbox-api.coinmarketcap.com/v1" \
 CMC_APIKey="string: (optional) CMC API key" \
 CouchDB_URL="string: CouchDB connection URL" \
