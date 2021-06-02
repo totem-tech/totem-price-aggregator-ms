@@ -13,6 +13,7 @@ const cgClient = new CoinGecko()
 const cryptoType = 'cryptocurrency'
 const moduleName = 'CoinGecko'
 const debugTag = `[${moduleName}]`
+const ms1Day = 1000 * 60 * 60 * 24
 export const sourceText = 'coingecko.com'
 
 /**
@@ -212,10 +213,12 @@ export const getPriceHistory = async (currencyId, coinId, dateFrom, dateTo, vsCu
  * @param   {CouchDBStorage}    dbConf
  * @param   {Boolean}           updateDaily
  */
-export const updateCryptoDailyPrices = async (dbDailyHistory, dbCurrencies, dbConf, updateDaily = true) => {
+export const updateCryptoDailyPrices = async (...args) => {
+    const [dbDailyHistory, dbCurrencies, dbConf, updateDaily = true] = args
     const debugTag = `[${moduleName}] [Daily]`
 
     if (!active) return log(debugTag, 'price updates disabled')
+    const startTs = new Date()
     try {
         log(debugTag, 'Started retrieving cyrpto daily prices')
         const cgCoins = await getCoinsList(false)
@@ -283,10 +286,8 @@ export const updateCryptoDailyPrices = async (dbDailyHistory, dbCurrencies, dbCo
     }
 
     if (!updateDaily) return
-    log(debugTag, 'Waiting 24 hours before next execution....')
-    setTimeout(() => updateCryptoDailyPrices(
-        dbDailyHistory,
-        dbCurrencies,
-        updateDaily,
-    ), 1000 * 60 * 60 * 24)
+
+    log('Waiting ~24 hours for next execution...')
+    const delay = ms1Day - (new Date() - startTs)
+    setTimeout(() => updateCryptoDailyPrices(...args), delay)
 }

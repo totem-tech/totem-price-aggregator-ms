@@ -14,6 +14,7 @@ const moduleName = 'AlphaVantage'
 const debugTag = `[${moduleName}]`
 export const sourceText = 'alphavantage.co'
 // 100 days in milliseconds
+const ms1Day = 1000 * 60 * 60 * 24
 const ms100Days = 1000 * 60 * 60 * 24 * 100
 // result types
 const resultType = {
@@ -132,10 +133,11 @@ export const getDailyPrice = async (symbol, outputsize = outputSize.compact, dat
  * @param   {CouchDBStorage}    dbConf
  * @param   {Boolean}           updateDaily     Default: `true`
  */
-export const updateStockDailyPrices = async (dbHistory, dbCurrencies, dbConf, updateDaily = true) => {
+export const updateStockDailyPrices = async (...args) => {
+    const [dbHistory, dbCurrencies, dbConf, updateDaily = true] = args
     const log = logWithTag(`${debugTag} [Daily]`)
     if (!API_KEY) return log('price updates disabled')
-
+    const startTs = new Date()
     try {
         log(
             'Started retrieving daily stock prices.',
@@ -277,8 +279,9 @@ export const updateStockDailyPrices = async (dbHistory, dbCurrencies, dbConf, up
         log('Failed to update daily stock prices', err)
     }
     if (!updateDaily) return
-    log('Waiting 24 hours for next execution...')
+    log('Waiting ~24 hours for next execution...')
+    const delay = ms1Day - (new Date() - startTs)
     setTimeout(() => {
         updateStockDailyPrices(dbHistory, dbCurrencies)
-    }, 1000 * 60 * 60 * 24)
+    }, delay)
 }
