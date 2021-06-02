@@ -135,7 +135,7 @@ export const getDailyStockPrice = async (symbol, outputSize, dataType = dataType
     const data = result[dataKey]
     const { Note, Information } = result
     if (!isObj(data)) {
-        const err = Note || Information || ''
+        const err = Note || Information || result['Error Message'] || ''
         const limitExceeded = `${err}`.includes('Thank you for using Alpha Vantage!')
         let msg = ''
         if (limitExceeded) {
@@ -201,7 +201,7 @@ export const getDailyFiatPrice = async (symbolFrom, symbolTo = 'USD', outputSize
     const data = result[dataKey]
     const { Note, Information } = result
     if (!isObj(data)) {
-        console.log({ result })
+        log(JSON.stringify(result))
         const err = Note || Information || ''
         const limitExceeded = `${err}`.includes('Thank you for using Alpha Vantage!')
         err && log(err)
