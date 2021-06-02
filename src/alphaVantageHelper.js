@@ -137,11 +137,15 @@ export const getDailyStockPrice = async (symbol, outputSize, dataType = dataType
     if (!isObj(data)) {
         const err = Note || Information || ''
         const limitExceeded = `${err}`.includes('Thank you for using Alpha Vantage!')
+        let msg = ''
         if (limitExceeded) {
-            logIncident(debugTag, 'Exceeded per-minute or daily requests!', err)
+            msg = `Exceeded per-minute or daily requests! ${err}`
         } else {
-            logIncident(debugTag, `$${symbol} request failed or invalid data received. Error message: ${Note || Information}`)
+            msg = `$${symbol} request failed or invalid data received. Error message: ${err}`
         }
+        logIncident(debugTag, msg)
+
+        log(msg, err)
     }
 
     return data
@@ -197,8 +201,10 @@ export const getDailyFiatPrice = async (symbolFrom, symbolTo = 'USD', outputSize
     const data = result[dataKey]
     const { Note, Information } = result
     if (!isObj(data)) {
+        console.log({ result })
         const err = Note || Information || ''
         const limitExceeded = `${err}`.includes('Thank you for using Alpha Vantage!')
+        err && log(err)
         if (limitExceeded) {
             logIncident(debugTag, 'Exceeded per-minute or daily requests!', err)
         } else {
@@ -379,7 +385,7 @@ export const updateStockDailyPrices = async (...args) => {
 
             if (i === numBatches - 1) continue
 
-            const secondsDelay = (60 / apiKeys.length)
+            const secondsDelay = 60 //(60 / apiKeys.length)
             log(`Waiting ${secondsDelay} seconds to retrieve next batch...`)
             // wait 1 minute and retrieve next batch next batch
             await PromisE.delay(1000 * secondsDelay)

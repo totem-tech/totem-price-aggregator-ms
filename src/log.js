@@ -23,15 +23,15 @@ export default function log(...args) {
  */
 export const logIncident = async (...message) => {
     const incidentID = uuidv1()
-    message = [...message]
-        .map(x => `${x || ''}`)
-        .filter(Boolean)
-        .join(' ')
-    const content = '>>> ' + [
-        `**IncidentID:** ${incidentID}`,
-        '**Error:** ' + `${message}`.replace('Error:', ''),
-    ].join('\n')
     try {
+        message = [...message]
+            .map(x => `${x || ''}`)
+            .filter(Boolean)
+            .join(' ')
+        const content = '>>> ' + [
+            `**IncidentID:** ${incidentID}`,
+            '**Error:** ' + `${message}`.replace('Error:', ''),
+        ].join('\n')
         await PromisE.fetch(DISCORD_WEBHOOK_URL, {
             json: true,
             method: 'post',

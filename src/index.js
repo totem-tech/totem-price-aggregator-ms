@@ -127,7 +127,7 @@ const updateLatestPrices = async () => {
             await dbCurrencies.setAll(new Map(updatedCurrencies), false)
         }
     } catch (err) {
-        const incidentID = logIncident(err, incidentID)
+        const incidentID = logIncident(debugTag, err)
         log(debugTag, `IncidentID: ${incidentID}: execution ended with error \n${err.stack}`)
     }
 

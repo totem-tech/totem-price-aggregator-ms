@@ -2,7 +2,7 @@ import CoinGecko from 'coingecko-api'
 import DataStorage from './utils/DataStorage'
 import PromisE from './utils/PromisE'
 import { arrSort, isArr, isDefined, isInteger, isValidNumber } from './utils/utils'
-import log from './log'
+import { logWithTag } from './log'
 import { getHistoryItemId, usdToROE } from './utils'
 import CouchDBStorage from './utils/CouchDBStorage'
 
@@ -15,7 +15,7 @@ const moduleName = 'CoinGecko'
 const debugTag = `[${moduleName}]`
 const ms1Day = 1000 * 60 * 60 * 24
 export const sourceText = 'coingecko.com'
-
+const log = logWithTag(debugTag)
 /**
  * @name    getCoinsList
  * @summary get a list of all coins available on CoinGecko
@@ -28,9 +28,9 @@ export const getCoinsList = async (forceUpdate = false) => {
     let list = coinsList.getAll()
     if (list.size && !forceUpdate) return list
 
-    log(debugTag, 'Retrieving list of supported coins')
+    log('Retrieving list of supported coins')
     let { data } = await cgClient.coins.list()
-    if (!isArr(data)) throw log(debugTag, 'Invalid data received from CoinGecko')
+    if (!isArr(data)) throw log('Invalid data received from CoinGecko')
 
     data = new Map(
         data.map(({ id, name, symbol }) => [
@@ -51,13 +51,13 @@ export const getCoinsList = async (forceUpdate = false) => {
  * @returns {Map}
  */
 export const getLatestPrices = async (symbols = []) => {
-    log(debugTag, 'Retrieving list of coins')
+    log('Retrieving list of coins')
 
     let supprtedCoins
     try {
         supprtedCoins = await getCoinsList(false)
     } catch (err) {
-        log(debugTag, 'Failed to retrieve coins list', err)
+        log('Failed to retrieve coins list', err)
         return
     }
 
@@ -126,7 +126,7 @@ export const getLatestPrices = async (symbols = []) => {
             ])
         return new Map(results)
     } catch (err) {
-        log(debugTag, `Failed to retrieve price. ${err}`, err)
+        log(`Failed to retrieve price. ${err}`, err)
         return
     }
 }
@@ -163,7 +163,7 @@ export const getPriceHistory = async (currencyId, coinId, dateFrom, dateTo, vsCu
     const { error, market_caps, prices } = (result || {}).data || {}
 
     if (error || !isArr(prices) || !isArr(market_caps)) {
-        log(debugTag, params, `CoinId - ${coinId}: failed to retrieve price history. ${error || ''}`)
+        log(params, `CoinId - ${coinId}: failed to retrieve price history. ${error || ''}`)
         return
     }
     dateFrom = dateFrom.toISOString().substr(0, 10)
@@ -210,11 +210,12 @@ export const getPriceHistory = async (currencyId, coinId, dateFrom, dateTo, vsCu
 export const updateCryptoDailyPrices = async (...args) => {
     const [dbDailyHistory, dbCurrencies, dbConf, updateDaily = true] = args
     const debugTag = `[${moduleName}] [Daily]`
+    const log = logWithTag(debugTag)
 
-    if (!active) return log(debugTag, 'price updates disabled')
+    if (!active) return log('price updates disabled')
     const startTs = new Date()
     try {
-        log(debugTag, 'Started retrieving cyrpto daily prices')
+        log('Started retrieving cyrpto daily prices')
         const cgCoins = await getCoinsList(false)
         const cryptoCoins = await dbCurrencies.search(
             { type: cryptoType },
@@ -246,7 +247,7 @@ export const updateCryptoDailyPrices = async (...args) => {
             .filter(Boolean)
 
         const len = coinsToFetch.length
-        log(debugTag, `Fetching daily prices for ${len} currencies`)
+        log(`Fetching daily prices for ${len} currencies`)
 
         for (let i = 0; i < len; i++) {
             const [currencyId, coinId, historyLastDay] = coinsToFetch[i]
@@ -254,7 +255,7 @@ export const updateCryptoDailyPrices = async (...args) => {
             try {
                 const result = await getPriceHistory(currencyId, coinId, historyLastDay)
 
-                log(debugTag, coinTag, `saving ${result.length} daily crypto price entries`)
+                log(coinTag, `saving ${result.length} daily crypto price entries`)
                 await dbDailyHistory.setAll(new Map(result), false)
                 const dates = result
                     .map(([_, { date }]) => date)
@@ -267,16 +268,16 @@ export const updateCryptoDailyPrices = async (...args) => {
 
                 if (i === len - 1) continue // last item
             } catch (err) {
-                log(debugTag, coinTag, err)
+                log(coinTag, err)
             }
 
-            log(debugTag, `Waiting ${delaySeconds} seconds to avoid being throttled`)
+            log(`Waiting ${delaySeconds} seconds to avoid being throttled`)
             await PromisE.delay(delaySeconds * 1000)
         }
 
-        len && log(debugTag, 'Finished retrieving daily crypto prices')
+        len && log('Finished retrieving daily crypto prices')
     } catch (err) {
-        log(debugTag, 'Failed to update daily crypto prices', err)
+        log('Failed to update daily crypto prices', err)
     }
 
     if (!updateDaily) return
