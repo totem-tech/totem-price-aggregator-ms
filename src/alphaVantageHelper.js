@@ -148,11 +148,11 @@ export const getDailyStockPrice = async (symbol, outputSize, dataType = dataType
         if (limitExceeded) {
             msg = 'Exceeded per-minute or daily requests!'
         } else {
-            logIncident(debugTag, msg)
             msg = `$${symbol} request failed or invalid data received. Error message: ${err}`
+            logIncident(debugTag, msg)
         }
 
-        log(msg, err)
+        log(msg)
     }
 
     return data
@@ -221,11 +221,11 @@ export const getDailyFiatPrice = async (symbolFrom, symbolTo = 'USD', outputSize
         if (limitExceeded) {
             msg = 'Exceeded per-minute or daily requests!'
         } else {
-            logIncident(debugTag, msg)
             msg = `$${symbol} request failed or invalid data received. Error message: ${err}`
+            logIncident(debugTag, msg)
         }
 
-        log(msg, err)
+        log(msg)
     }
 
     return data
