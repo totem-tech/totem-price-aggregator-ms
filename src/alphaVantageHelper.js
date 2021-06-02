@@ -119,8 +119,8 @@ export const getDailyStockPrice = async (symbol, outputSize, dataType = dataType
     if (!symbol) throw new Error('Ticker required')
     if (!apiKeys.length) throw new Error('AlphaAdvantage API required')
 
-    const log = logWithTag(`${debugTag} [Daily] [Stock]`)
     const debugTag = `${debugTag} [Daily] [Stock]`
+    const log = logWithTag(debugTag)
     const dataKey = 'Time Series (Daily)'
     const params = {
         apikey: getApiKey(),
@@ -184,7 +184,6 @@ export const getDailyFiatPrice = async (symbolFrom, symbolTo = 'USD', outputSize
     if (!symbolFrom) throw new Error('symbolFrom required')
     if (!symbolTo) throw new Error('symbolTo required')
 
-    const log = logWithTag(`${debugTag} [Daily] [Fiat]`)
     outputSize = !outputSizes[outputSize]
         ? outputSizes.compact
         : outputSize
@@ -193,6 +192,7 @@ export const getDailyFiatPrice = async (symbolFrom, symbolTo = 'USD', outputSize
         : dataType
 
     const debugTag = `${debugTag} [Daily] [Fiat]`
+    const log = logWithTag(debugTag)
     const dataKey = 'Time Series FX (Daily)'
     const params = {
         apikey: getApiKey(),
