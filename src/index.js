@@ -14,7 +14,7 @@ const cycleDurationMin = parseInt(process.env.cycleDurationMin || 0)
 // list of currencies to update
 const dbCurrencies = new CouchDBStorage(null, 'currencies')
 const dbABIs = new CouchDBStorage(null, 'currencies_abi')
-const dbDailyHistory = new CouchDBStorage(null, 'currencies_price-history-daily-test')
+const dbDailyHistory = new CouchDBStorage(null, 'currencies_price-history-daily')
 const dbConf = new CouchDBStorage(null, 'currencies_aggregator-conf')
 // contract list: https://docs.chain.link/docs/ethereum-addresses
 const contracts = new DataStorage('currency-contract-address.json', true)
