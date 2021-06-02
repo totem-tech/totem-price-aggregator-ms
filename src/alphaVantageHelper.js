@@ -201,15 +201,17 @@ export const getDailyFiatPrice = async (symbolFrom, symbolTo = 'USD', outputSize
     const data = result[dataKey]
     const { Note, Information } = result
     if (!isObj(data)) {
-        log(JSON.stringify(result))
-        const err = Note || Information || ''
+        const err = Note || Information || result['Error Message'] || ''
         const limitExceeded = `${err}`.includes('Thank you for using Alpha Vantage!')
-        err && log(err)
+        let msg = ''
         if (limitExceeded) {
-            logIncident(debugTag, 'Exceeded per-minute or daily requests!', err)
+            msg = `Exceeded per-minute or daily requests! ${err}`
         } else {
-            logIncident(debugTag, `$${symbolFrom} request failed or invalid data received. Error message: ${Note || Information}`)
+            msg = `$${symbol} request failed or invalid data received. Error message: ${err}`
         }
+        logIncident(debugTag, msg)
+
+        log(msg, err)
     }
 
     return data
