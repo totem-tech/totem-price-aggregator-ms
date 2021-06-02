@@ -6,7 +6,7 @@ import log from './log'
 import { getHistoryItemId, usdToROE } from './utils'
 import CouchDBStorage from './utils/CouchDBStorage'
 
-const active = process.env.CG_Active !== 'false'
+const active = process.env.CG_Active === 'true'
 const delaySeconds = parseInt(process.env.CG_Throttle_Delay_Seconds) || 10
 const coinsList = new DataStorage('coingecko-coins-list.json')
 const cgClient = new CoinGecko()
@@ -146,12 +146,6 @@ export const getLatestPrices = async (symbols = []) => {
  * @returns {Map}
  */
 export const getPriceHistory = async (currencyId, coinId, dateFrom, dateTo, vsCurrency = 'usd') => {
-    // if (!dateFrom) return [
-    //     ...await getPriceHistory(currencyId, coinId, '2009-01-01', '2015-01-01', vsCurrency),
-    //     // PromisE.delay(3000),
-    //     ...await getPriceHistory(currencyId, coinId, '2015-01-01', '2018-01-01', vsCurrency),
-    //     ...await getPriceHistory(currencyId, coinId, '2018-01-01', dateTo, vsCurrency),
-    // ]
     dateFrom = new Date(dateFrom || '2009-01-01')
     const to = new Date(dateTo || new Date())
     const days91 = 1000 * 60 * 60 * 24 * 91 // 91 days in milliseconds

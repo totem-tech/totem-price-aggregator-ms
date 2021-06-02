@@ -7,7 +7,11 @@ import { logIncident, logWithTag } from './log'
 import { getHistoryItemId, usdToROE } from './utils'
 
 const API_BASE_URL = 'https://www.alphavantage.co/query?'
-const API_KEY = process.env.AA_API_Key
+// const getApiKey() = process.env.AA_API_Key
+const apiKeys = `${process.env.AA_API_Key || ''}`
+    .trim()
+    .split(',')
+    .filter(Boolean)
 const LIMIT_DAY = parseInt(process.env.AA_Limit_Per_Day) || 500
 const LIMIT_MINUTE = parseInt(process.env.AA_Limit_Per_Minute) || 5
 const moduleName = 'AlphaVantage'
@@ -16,33 +20,43 @@ export const sourceText = 'alphavantage.co'
 // 100 days in milliseconds
 const ms1Day = 1000 * 60 * 60 * 24
 const ms100Days = 1000 * 60 * 60 * 24 * 100
+const currencyTypes = {
+    fiat: 'fiat',
+    stock: 'stock',
+}
 // result types
-const resultType = {
+const dataTypes = {
     json: 'json',
     csv: 'csv',
 }
 // query output size
-const outputSize = {
+const outputSizes = {
     compact: 'compact', // last 100 days
     full: 'full', // all available data
 }
 
 /**
- * @name    fetchSupportedCryptoList
+ * @name    fetchSupportedList
  * @summary fetch list of all supported cyrptocurrencies
  * 
- * @param   {Boolean} force if false, will only retrieve data if cached data is not available.
+ * @param   {String}    currencyType    see `currencyTypes` for list of supported types
+ * @param   {Boolean}   force           if false, will only retrieve data if cached data is not available.
  * @returns 
  */
-export const fetchSupportedCryptoList = async (force = false) => {
-    const cryptoList = new DataStorage('alphavantage-crypto-list.json')
+export const fetchSupportedList = async (currencyType, force = false) => {
+    if (!currencyTypes[currencyType]) throw new Error('Invalid currency type')
+
+    const list = new DataStorage(`alphavantage-${currencyType}-list.json`)
     let data = force
         ? new Map()
-        : cryptoList.getAll()
+        : list.getAll()
     if (data.size) return data
 
+    const typeName = currencyType === currencyTypes.fiat
+        ? 'physical'
+        : 'digital'
     const result = await PromisE.fetch(
-        'https://www.alphavantage.co/digital_currency_list/',
+        `https://www.alphavantage.co/${typeName}_currency_list/`,
         { method: 'get' },
         5000,
         false,
@@ -56,16 +70,24 @@ export const fetchSupportedCryptoList = async (force = false) => {
             ])
     )
 
-    cryptoList.setAll(data, true)
+    list.setAll(data, true)
     return data
 }
 
+const getApiKey = () => {
+    const { index = -1 } = getApiKey
+    getApiKey.index = apiKeys.length === index
+        ? 0
+        : index + 1
+    return apiKeys[getApiKey.index]
+}
+
 /**
- * @name    getDailyPrice
+ * @name    getDailyStockPrice
  * @summary retrieves historical daily adjusted closing price of a stock or ETF. Alpha Vantage API documentation: https://www.alphavantage.co/documentation/#dailyadj
  * 
  * @param   {String}    symbol      Stock/ETF symbol. Eg: 'IBM'. Only single currency supported.
- * @param   {String}    outputsize  determines the number of days historical data to retrieve.
+ * @param   {String}    outputSize  determines the number of days historical data to retrieve.
  *                                  Accepted values:
  *                                  - `compact`: 100 days data
  *                                  - `full`: all available data. Can be up to 20+ years.
@@ -77,7 +99,7 @@ export const fetchSupportedCryptoList = async (force = false) => {
  * 
  * @example ```javascript
  * // Retrieve full daily price history of Tesla stock
- * const result =  getDailyPrice('TSLA', 'full', 'json')
+ * const result =  getDailyStockPrice('TSLA', 'full', 'json')
  * // sample data:
  * {
  * "1999-11-18": {
@@ -93,22 +115,22 @@ export const fetchSupportedCryptoList = async (force = false) => {
  * }
  * ```
  */
-export const getDailyPrice = async (symbol, outputsize = outputSize.compact, dataType = resultType.json) => {
+export const getDailyStockPrice = async (symbol, outputSize, dataType = dataTypes.json) => {
     if (!symbol) throw new Error('Ticker required')
-    if (!API_KEY) throw new Error('AlphaAdvantage API required')
+    if (!apiKeys.length) throw new Error('AlphaAdvantage API required')
 
-    const debugTag = `${debugTag} [Daily]`
+    const debugTag = `${debugTag} [Daily] [Stock]`
     const dataKey = 'Time Series (Daily)'
     const params = {
-        apikey: API_KEY,
+        apikey: getApiKey(),
         symbol,
         function: 'TIME_SERIES_DAILY_ADJUSTED',
-        dataType,
-        outputsize,
+        datatype: dataType,
+        outputsize: outputSize,
     }
     const url = `${API_BASE_URL}${objToUrlParams(params)}`
-    const result = await PromisE.fetch(url, { method: 'get' }, 60000)
-    if (dataType === resultType.csv) return result
+    const result = await PromisE.fetch(url, { method: 'get' }, 30000)
+    if (dataType === dataTypes.csv) return result
 
     const data = result[dataKey]
     const { Note, Information } = result
@@ -119,6 +141,68 @@ export const getDailyPrice = async (symbol, outputsize = outputSize.compact, dat
             logIncident(debugTag, 'Exceeded per-minute or daily requests!', err)
         } else {
             logIncident(debugTag, `$${symbol} request failed or invalid data received. Error message: ${Note || Information}`)
+        }
+    }
+
+    return data
+}
+/**
+ */
+/**
+ * @name    getFiatDailyPrice
+ * @summary retrieve daily closing price for fiat currencies
+ * 
+ * @param   {String} symbolFrom 
+ * @param   {String} symbolTo   (optional) Default: `USD`
+ * @param   {String} outputSize (optional) Default: `compact`
+ * @param   {String} dataType   (optional) Default: 'json`
+ * 
+ * 
+ * @example output```javascript 
+ * {
+ *      "2021-06-02": {
+ *          "1. open": "1.22160",
+ *          "2. high": "1.22265",
+ *          "3. low": "1.21620",
+ *          "4. close": "1.22090"
+ *      }
+ * }
+ */
+export const getDailyFiatPrice = async (symbolFrom, symbolTo = 'USD', outputSize, dataType) => {
+    if (!apiKeys.length) throw new Error('AlphaAdvantage API required')
+    if (!symbolFrom) throw new Error('symbolFrom required')
+    if (!symbolTo) throw new Error('symbolTo required')
+
+    outputSize = !outputSizes[outputSize]
+        ? outputSizes.compact
+        : outputSize
+    dataType = !dataTypes[dataType]
+        ? dataTypes.json
+        : dataType
+
+    const debugTag = `${debugTag} [Daily] [Fiat]`
+    const dataKey = 'Time Series FX (Daily)'
+    const params = {
+        apikey: getApiKey(),
+        from_symbol: symbolFrom,
+        to_symbol: symbolTo,
+        function: 'FX_DAILY',
+        datatype: dataType,
+        outputsize: outputSize,
+    }
+    const url = `${API_BASE_URL}${objToUrlParams(params)}`
+    const result = await PromisE.fetch(url, { method: 'get' }, 30000)
+    if (dataType === dataTypes.csv) return result
+
+    const data = result[dataKey]
+    const { Note, Information } = result
+    if (!isObj(data)) {
+        const err = Note || Information || ''
+        const limitExceeded = `${err}`.includes('Thank you for using Alpha Vantage!')
+        if (limitExceeded) {
+            logIncident(debugTag, 'Exceeded per-minute or daily requests!', err)
+        } else {
+            logIncident(debugTag, `$${symbolFrom} request failed or invalid data received. Error message: ${Note || Information}`)
         }
     }
 
@@ -136,20 +220,22 @@ export const getDailyPrice = async (symbol, outputsize = outputSize.compact, dat
 export const updateStockDailyPrices = async (...args) => {
     const [dbHistory, dbCurrencies, dbConf, updateDaily = true] = args
     const log = logWithTag(`${debugTag} [Daily]`)
-    if (!API_KEY) return log('price updates disabled')
+
+    if (!apiKeys.length) return log('price updates disabled')
+
     const startTs = new Date()
     try {
         log(
-            'Started retrieving daily stock prices.',
+            'Started retrieving daily prices.',
             `Limit per minute: ${LIMIT_MINUTE}.`,
             `Limit per day: ${LIMIT_DAY || 'infinite'}.`,
         )
         if (!isCouchDBStorage(dbHistory, dbCurrencies)) throw new Error(
             'Invalid CouchDBStorage instance supplied: dbHistory'
         )
-        const priceKey = '5. adjusted close'
-        const stockCurrencies = await dbCurrencies.search(
-            { type: 'stock' },
+
+        const currencies = await dbCurrencies.search(
+            { type: { $in: Object.values(currencyTypes) } },
             99999,
             0,
             false,
@@ -158,39 +244,61 @@ export const updateStockDailyPrices = async (...args) => {
 
         // aggregator configurations including last dates for each currency
         const allConf = await dbConf.getAll(
-            stockCurrencies.map(({ _id }) => _id),
+            currencies.map(({ _id }) => _id),
             true
         )
+        const fiatTickers = await fetchSupportedList(currencyTypes.fiat, false)
+        const queryData = currencies.map((currency, index) => {
+            const { _id: currencyId, ticker, type } = currency
 
-        const queryData = stockCurrencies
-            .map(({ _id: currencyId, ticker }, index) => {
-                const { historyLastDay: lastDate } = allConf.get(currencyId) || {}
-                const yesterday = new Date(new Date() - 1000 * 60 * 60 * 24)
-                    .toISOString()
-                    .substr(0, 10)
-                if (lastDate && lastDate >= yesterday) return
+            // ignore if fiat currency is not supported by AlphaVantage
+            if (type === currencyTypes.fiat && !fiatTickers.get(ticker)) return
 
-                const size = !isValidDate(lastDate) || (new Date() - new Date(lastDate)) > ms100Days
-                    ? outputSize.full
-                    : outputSize.compact
-                return [index, lastDate, ticker, size, resultType.json]
-            })
+            const { historyLastDay: lastDate } = allConf.get(currencyId) || {}
+            const yesterday = new Date(new Date() - 1000 * 60 * 60 * 24)
+                .toISOString()
+                .substr(0, 10)
+            if (lastDate && lastDate >= yesterday) return
+
+            const size = !isValidDate(lastDate) || (new Date() - new Date(lastDate)) > ms100Days
+                ? outputSizes.full
+                : outputSizes.compact
+            const data = {
+                index,
+                lastDate,
+                ticker,
+            }
+            switch (type) {
+                case currencyTypes.fiat:
+                    data.func = getDailyFiatPrice
+                    data.funcArgs = [ticker, 'USD', size, dataTypes.json]
+                    data.priceKey = '4. close'
+                    break
+                case currencyTypes.stock:
+                    data.func = getDailyStockPrice
+                    data.funcArgs = [ticker, size, dataTypes.json]
+                    data.priceKey = '5. adjusted close'
+                    break
+            }
+            return data
+            // return [index, lastDate, ticker, size, dataTypes.json]
+        })
             .filter(Boolean)
             .slice(0, LIMIT_DAY || LIMIT_MINUTE * 59 * 24)
 
         const processNextBatch = async (batchData) => {
             const results = await PromisE.all(
-                batchData.filter(Boolean).map(data =>
-                    getDailyPrice(...data.slice(2))
-                )
+                batchData
+                    .filter(Boolean)
+                    .map(d => d.func(...d.funcArgs))
             )
             const currenciesUpdated = new Map()
             const confsUpdated = new Map()
             const priceEntries = results.map((result, i) => {
-                const [currencyIndex, lastDate] = batchData[i]
-                const currency = stockCurrencies[currencyIndex]
-                const { _id, ticker, type } = currency
-                if (!result) return log(ticker, 'empty result received', result)
+                const { index, lastDate, priceKey } = batchData[i]
+                const currency = currencies[index]
+                const { _id: currencyId, ticker, type } = currency
+                if (!result) return log(ticker, 'empty result received', { result })
 
                 const dates = Object.keys(result)
                     .filter(date => !lastDate || lastDate < date)
@@ -202,24 +310,26 @@ export const updateStockDailyPrices = async (...args) => {
                 const entries = dates.map(date => ([
                     getHistoryItemId(date, ticker, type),
                     {
-                        currencyId: _id,
+                        currencyId,
                         date,
-                        ratioOfExchange: usdToROE(parseFloat(result[date][priceKey]) || 0),
+                        ratioOfExchange: usdToROE(
+                            parseFloat(result[date][priceKey]) || 0
+                        ),
                         source: sourceText,
                     },
                 ]))
 
                 const { date: newDate, ratioOfExchange } = entries.slice(-1)[0][1]
                 // set most recet price as "current price" for the currency
-                currenciesUpdated.set(_id, {
+                currenciesUpdated.set(currencyId, {
                     ...currency,
                     ratioOfExchange,
                     priceUpdatedAt: `${newDate}T00:00:00Z`,
                     source: sourceText,
                 })
                 // save last date for next execution
-                confsUpdated.set(_id, {
-                    ...confsUpdated.get(_id),
+                confsUpdated.set(currencyId, {
+                    ...confsUpdated.get(currencyId),
                     historyLastDay: newDate,
                 })
 
@@ -236,7 +346,7 @@ export const updateStockDailyPrices = async (...args) => {
             }
 
             // save daily prices
-            log(`Saving ${priceEntries.length} daily stock price entries`)
+            log(`Saving ${priceEntries.length} daily price entries`)
             await dbHistory.setAll(new Map(priceEntries), true)
             // save daily prices
             log(`Updating ${confsUpdated.size} config entires`)
@@ -247,21 +357,21 @@ export const updateStockDailyPrices = async (...args) => {
         const len = queryData.length
         const numBatches = parseInt(len / LIMIT_MINUTE)
         let totalSaved = 0
-        log(`Updating ${len} stocks`)
+        log(`Updating ${len} tickers`)
         for (let i = 0; i < numBatches; i++) {
             const startIndex = i * LIMIT_MINUTE
             const endIndex = startIndex + LIMIT_MINUTE
             const batchData = queryData.slice(startIndex, endIndex)
-            const batchTickers = batchData.map(ar => ' $' + ar[2])
+            const batchTickers = batchData.map(data => ' $' + data.ticker)
 
-            log(`Retrieving stock prices ${startIndex + 1} to ${endIndex}/${len}:${batchTickers}`)
+            log(`Retrieving prices ${startIndex + 1} to ${endIndex}/${len}:${batchTickers}`)
             try {
                 const numSaved = await processNextBatch(batchData)
                 totalSaved += numSaved || 0
             } catch (err) {
                 logIncident(
                     `${debugTag} [Daily]`,
-                    'Failed to retrieve daily stock prices of batch: ',
+                    'Failed to retrieve daily prices of batch: ',
                     batchTickers,
                     err
                 )
@@ -269,14 +379,15 @@ export const updateStockDailyPrices = async (...args) => {
 
             if (i === numBatches - 1) continue
 
-            log('Waiting 1 minute to retrieve next batch...')
+            const secondsDelay = (60 / apiKeys.length)
+            log(`Waiting ${secondsDelay} seconds to retrieve next batch...`)
             // wait 1 minute and retrieve next batch next batch
-            await PromisE.delay(1000 * 60)
+            await PromisE.delay(1000 * secondsDelay)
         }
 
-        log('Finished retrieving daily stock prices. Total saved', totalSaved, 'entries')
+        log('Finished retrieving daily prices. Total saved', totalSaved, 'entries')
     } catch (err) {
-        log('Failed to update daily stock prices', err)
+        log('Failed to update daily prices', err)
     }
     if (!updateDaily) return
     log('Waiting ~24 hours for next execution...')
