@@ -134,17 +134,23 @@ export const getDailyStockPrice = async (symbol, outputSize, dataType = dataType
     if (dataType === dataTypes.csv) return result
 
     const data = result[dataKey]
+    const err = result['Error Message']
+    if (err) {
+        logIncident(debugTag, err)
+        return log(err)
+    }
+
     const { Note, Information } = result
     if (!isObj(data)) {
-        const err = Note || Information || result['Error Message'] || ''
+        const err = Note || Information || ''
         const limitExceeded = `${err}`.includes('Thank you for using Alpha Vantage!')
         let msg = ''
         if (limitExceeded) {
-            msg = `Exceeded per-minute or daily requests! ${err}`
+            msg = 'Exceeded per-minute or daily requests!'
         } else {
+            logIncident(debugTag, msg)
             msg = `$${symbol} request failed or invalid data received. Error message: ${err}`
         }
-        logIncident(debugTag, msg)
 
         log(msg, err)
     }
@@ -201,17 +207,23 @@ export const getDailyFiatPrice = async (symbolFrom, symbolTo = 'USD', outputSize
     if (dataType === dataTypes.csv) return result
 
     const data = result[dataKey]
+    const err = result['Error Message']
+    if (err) {
+        logIncident(debugTag, err)
+        return log(err)
+    }
+
     const { Note, Information } = result
     if (!isObj(data)) {
-        const err = Note || Information || result['Error Message'] || ''
+        const err = Note || Information || ''
         const limitExceeded = `${err}`.includes('Thank you for using Alpha Vantage!')
         let msg = ''
         if (limitExceeded) {
-            msg = `Exceeded per-minute or daily requests! ${err}`
+            msg = 'Exceeded per-minute or daily requests!'
         } else {
+            logIncident(debugTag, msg)
             msg = `$${symbol} request failed or invalid data received. Error message: ${err}`
         }
-        logIncident(debugTag, msg)
 
         log(msg, err)
     }
