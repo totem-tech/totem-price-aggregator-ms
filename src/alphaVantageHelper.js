@@ -191,8 +191,7 @@ export const getDailyFiatPrice = async (symbolFrom, symbolTo = 'USD', outputSize
         ? dataTypes.json
         : dataType
 
-    const debugTag = `${debugTag} [Daily] [Fiat]`
-    const log = logWithTag(debugTag)
+    const log = logWithTag(`${debugTag} [Daily] [Fiat]`)
     const dataKey = 'Time Series FX (Daily)'
     const params = {
         apikey: getApiKey(),
@@ -222,7 +221,7 @@ export const getDailyFiatPrice = async (symbolFrom, symbolTo = 'USD', outputSize
             msg = 'Exceeded per-minute or daily requests!'
         } else {
             msg = `$${symbol} request failed or invalid data received. Error message: ${err}`
-            logIncident(debugTag, msg)
+            logIncident(`${debugTag} [Daily] [Fiat]`, msg)
         }
 
         log(msg)
