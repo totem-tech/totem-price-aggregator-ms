@@ -36,6 +36,36 @@ const outputSizes = {
 }
 
 /**
+ * 
+ * @param   {Object} result 
+ * @param   {String} dataKey 
+ * 
+ * @returns {Array} [data, apiErrorMsg, warningMsg]
+ */
+const checkAPIError = (result = {}, dataKey) => {
+    if (!isObj(result)) return []
+
+    const data = result[dataKey]
+    let err = result['Error Message']
+    let warningMsg = ''
+    if (err) return [data, err, warningMsg]
+
+    // request successful
+    if (isObj(data)) return [data]
+
+    const { Note, Information } = result
+    const msg = Note || Information || ''
+    const limitExceeded = `${msg}`.includes('Thank you for using Alpha Vantage!')
+    if (limitExceeded) {
+        warningMsg = 'Exceeded per-minute or daily requests!'
+    } else {
+        err = `$${symbol} request failed or invalid data received. Error message: ${msg}`
+    }
+
+    return [data, err, warningMsg]
+}
+
+/**
  * @name    fetchSupportedList
  * @summary fetch list of all supported cyrptocurrencies
  * 
@@ -116,11 +146,9 @@ const getApiKey = () => {
  * ```
  */
 export const getDailyStockPrice = async (symbol, outputSize, dataType = dataTypes.json) => {
-    if (!symbol) throw new Error('Ticker required')
+    if (!symbol) throw new Error('Symbol required')
     if (!apiKeys.length) throw new Error('AlphaAdvantage API required')
 
-    const debugTag = `${debugTag} [Daily] [Stock]`
-    const log = logWithTag(debugTag)
     const dataKey = 'Time Series (Daily)'
     const params = {
         apikey: getApiKey(),
@@ -133,27 +161,10 @@ export const getDailyStockPrice = async (symbol, outputSize, dataType = dataType
     const result = await PromisE.fetch(url, { method: 'get' }, 30000)
     if (dataType === dataTypes.csv) return result
 
-    const data = result[dataKey]
-    const err = result['Error Message']
-    if (err) {
-        logIncident(debugTag, err)
-        return log(err)
-    }
-
-    const { Note, Information } = result
-    if (!isObj(data)) {
-        const err = Note || Information || ''
-        const limitExceeded = `${err}`.includes('Thank you for using Alpha Vantage!')
-        let msg = ''
-        if (limitExceeded) {
-            msg = 'Exceeded per-minute or daily requests!'
-        } else {
-            msg = `$${symbol} request failed or invalid data received. Error message: ${err}`
-            logIncident(debugTag, msg)
-        }
-
-        log(msg)
-    }
+    const _debugTag = `${debugTag} [Daily] [Stock]`
+    const [data, err, warning] = checkAPIError(result, dataKey) || []
+    if (err) logIncident(_debugTag, err)
+    if (warning) log(_debugTag, warning)
 
     return data
 }
@@ -184,48 +195,23 @@ export const getDailyFiatPrice = async (symbolFrom, symbolTo = 'USD', outputSize
     if (!symbolFrom) throw new Error('symbolFrom required')
     if (!symbolTo) throw new Error('symbolTo required')
 
-    outputSize = !outputSizes[outputSize]
-        ? outputSizes.compact
-        : outputSize
-    dataType = !dataTypes[dataType]
-        ? dataTypes.json
-        : dataType
-
-    const log = logWithTag(`${debugTag} [Daily] [Fiat]`)
     const dataKey = 'Time Series FX (Daily)'
     const params = {
         apikey: getApiKey(),
         from_symbol: symbolFrom,
         to_symbol: symbolTo,
         function: 'FX_DAILY',
-        datatype: dataType,
-        outputsize: outputSize,
+        datatype: dataType || dataTypes.json,
+        outputsize: outputSize || outputSizes.compact,
     }
     const url = `${API_BASE_URL}${objToUrlParams(params)}`
     const result = await PromisE.fetch(url, { method: 'get' }, 30000)
     if (dataType === dataTypes.csv) return result
 
-    const data = result[dataKey]
-    const err = result['Error Message']
-    if (err) {
-        logIncident(debugTag, err)
-        return log(err)
-    }
-
-    const { Note, Information } = result
-    if (!isObj(data)) {
-        const err = Note || Information || ''
-        const limitExceeded = `${err}`.includes('Thank you for using Alpha Vantage!')
-        let msg = ''
-        if (limitExceeded) {
-            msg = 'Exceeded per-minute or daily requests!'
-        } else {
-            msg = `$${symbol} request failed or invalid data received. Error message: ${err}`
-            logIncident(`${debugTag} [Daily] [Fiat]`, msg)
-        }
-
-        log(msg)
-    }
+    const _debugTag = `${debugTag} [Daily] [Fiat]`
+    const [data, msg, err] = checkAPIError(result, dataKey) || []
+    if (msg) logIncident(_debugTag, msg)
+    if (err) log(_debugTag, err)
 
     return data
 }
@@ -328,7 +314,7 @@ export const updateStockDailyPrices = async (...args) => {
                 const { index, lastDate, priceKey } = batchData[i]
                 const currency = currencies[index]
                 const { _id: currencyId, ticker, type } = currency
-                if (!result) return log(ticker, 'empty result received', { result })
+                if (!isObj(data)) return log(`$${ticker}: empty result received`, { result })
 
                 const dates = Object.keys(result)
                     .filter(date => !lastDate || lastDate < date)
@@ -392,7 +378,7 @@ export const updateStockDailyPrices = async (...args) => {
             const startIndex = i * LIMIT_MINUTE
             const endIndex = startIndex + LIMIT_MINUTE
             const batchData = queryData.slice(startIndex, endIndex)
-            const batchTickers = batchData.map(data => ' $' + data.ticker)
+            const batchTickers = batchData.map(({ ticker }) => ` $${ticker}`)
 
             log(`Retrieving prices ${startIndex + 1} to ${endIndex}/${len}:${batchTickers}`)
             try {
