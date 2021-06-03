@@ -255,22 +255,29 @@ export const updateStockDailyPrices = async (...args) => {
             'Invalid CouchDBStorage instance supplied: dbHistory'
         )
 
-        const currencies = await dbCurrencies.search(
-            { type: { $in: Object.values(currencyTypes) } },
-            // { type: currencyTypes.fiat },
-            99999,
-            0,
-            false,
-            { sort: ['ticker'] }, // sort by ticker
-        )
-
+        const sort = [{
+            // Sort by ticker.
+            // Change sort direction every day so that even if API limit is hit
+            // all currencies will at least be updated every other day.
+            // This will only work well if total number of currencies is
+            // equal to or less than 2X the daily query limit.
+            ticker: new Date().getDate() % 2 === 0
+                ? 'asc'
+                : 'desc',
+        }]
+        // only retreive specific types of currencies
+        const selector = {
+            type: {
+                $in: Object.values(currencyTypes),
+            }
+        }
+        //const selector =  { type: currencyTypes.fiat } // retreive only fiat currencies
+        const currencies = await dbCurrencies.search(selector, 999999, 0, false, { sort })
         // aggregator configurations including last dates for each currency
-        const allConf = await dbConf.getAll(
-            currencies.map(({ _id }) => _id),
-            true
-        )
+        const currencyIds = currencies.map(({ _id }) => _id)
+        const allConf = await dbConf.getAll(currencyIds, true)
         const fiatTickers = await fetchSupportedList(currencyTypes.fiat, false)
-        const queryData = currencies.map((currency, index) => {
+        const generateQueryData = (currency, index) => {
             const { _id: currencyId, ticker, type } = currency
 
             // ignore if fiat currency is not supported by AlphaVantage
@@ -304,15 +311,16 @@ export const updateStockDailyPrices = async (...args) => {
             }
             return data
             // return [index, lastDate, ticker, size, dataTypes.json]
-        })
+        }
+        const maxPerDay = (LIMIT_DAY || LIMIT_MINUTE * 59 * 24) * apiKeys.length
+        const queryData = currencies
+            .map(generateQueryData)
             .filter(Boolean)
-            .slice(0, LIMIT_DAY || LIMIT_MINUTE * 59 * 24)
+            .slice(0, maxPerDay)
 
         const processNextBatch = async (batchData) => {
             const results = await PromisE.all(
-                batchData
-                    .filter(Boolean)
-                    .map(d => d.func(...d.funcArgs))
+                batchData.map(d => d.func(...d.funcArgs))
             )
             const currenciesUpdated = new Map()
             const confsUpdated = new Map()
@@ -388,7 +396,9 @@ export const updateStockDailyPrices = async (...args) => {
 
             log(`Retrieving prices ${startIndex + 1} to ${endIndex}/${len}:${batchTickers}`)
             try {
-                const numSaved = await processNextBatch(batchData)
+                const numSaved = await processNextBatch(
+                    batchData.filter(Boolean)
+                )
                 totalSaved += numSaved || 0
             } catch (err) {
                 logIncident(
