@@ -258,6 +258,7 @@ export const updateStockDailyPrices = async (...args) => {
 
         const currencies = await dbCurrencies.search(
             { type: { $in: Object.values(currencyTypes) } },
+            // { type: currencyTypes.fiat },
             99999,
             0,
             false,
