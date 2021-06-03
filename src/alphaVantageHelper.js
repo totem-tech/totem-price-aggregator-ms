@@ -76,7 +76,7 @@ export const fetchSupportedList = async (currencyType, force = false) => {
 
 const getApiKey = () => {
     const { index = -1 } = getApiKey
-    getApiKey.index = apiKeys.length === index
+    getApiKey.index = apiKeys.length - 1 === index
         ? 0
         : index + 1
     return apiKeys[getApiKey.index]
