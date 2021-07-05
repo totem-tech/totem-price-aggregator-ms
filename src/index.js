@@ -86,7 +86,7 @@ const updateLatestPrices = async () => {
             const cmcEntry = cmcPrices.get(ticker)
             const fiat = type === 'fiat'
             // Only use Chainlink for fiat prices
-            const targetEntry = (clEntry || !fiat ? (cgEntry || cmcEntry) : {}) || {}
+            const targetEntry = clEntry || (!fiat ? (cgEntry || cmcEntry) : {}) || {}
             let {
                 ratioOfExchange: roe = ratioOfExchange,
                 priceUpdatedAt: ts = priceUpdatedAt
