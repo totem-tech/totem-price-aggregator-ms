@@ -408,7 +408,7 @@ export const updateStockDailyPrices = async (...args) => {
         log('Failed to update daily prices', err)
     }
     if (!updateDaily) return
-    const delay = ms1Day - (new Date() - startTs)
+    let delay = ms1Day - (new Date() - startTs)
     const hour = 60 * 60 * 1000
     // if delay is shorter than 1 hour
     if (delay <= hour) delay = hour
