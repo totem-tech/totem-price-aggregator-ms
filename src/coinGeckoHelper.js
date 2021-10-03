@@ -2,7 +2,7 @@ import CoinGecko from 'coingecko-api'
 import DataStorage from './utils/DataStorage'
 import PromisE from './utils/PromisE'
 import { arrSort, isArr, isDefined, isInteger, isValidNumber } from './utils/utils'
-import { logWithTag } from './log'
+import { logIncident, logWithTag } from './log'
 import { getHistoryItemId, usdToROE } from './utils'
 import CouchDBStorage from './utils/CouchDBStorage'
 
@@ -254,6 +254,14 @@ export const updateCryptoDailyPrices = async (...args) => {
             const coinTag = `$${coinId} ${i + 1}/${len}:`
             try {
                 const result = await getPriceHistory(currencyId, coinId, historyLastDay)
+                if (!isArr(result)) {
+                    logIncident(coinTag, 'non-array result received. ')
+                    continue
+                }
+                if (!result.length) {
+                    log(coinTag, 'empty result')
+                    continue
+                }
 
                 log(coinTag, `saving ${result.length} daily crypto price entries`)
                 await dbDailyHistory.setAll(new Map(result), false)

@@ -3,7 +3,7 @@ import CouchDBStorage, { isCouchDBStorage } from './utils/CouchDBStorage'
 import DataStorage from './utils/DataStorage'
 import PromisE from './utils/PromisE'
 import { isObj, isValidDate, objToUrlParams } from './utils/utils'
-import { log, logIncident, logWithTag } from './log'
+import log, { logIncident, logWithTag } from './log'
 import { getHistoryItemId, usdToROE } from './utils'
 
 const API_BASE_URL = 'https://www.alphavantage.co/query?'
