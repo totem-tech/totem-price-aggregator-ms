@@ -23,6 +23,7 @@ export default function log(...args) {
  */
 export const logIncident = async (...message) => {
     const incidentID = uuidv1()
+    log('IncidentID:', incidentID, ...message)
     try {
         message = [...message]
             .map(x => `${x || ''}`)

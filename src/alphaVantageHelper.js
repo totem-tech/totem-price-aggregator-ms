@@ -3,7 +3,7 @@ import CouchDBStorage, { isCouchDBStorage } from './utils/CouchDBStorage'
 import DataStorage from './utils/DataStorage'
 import PromisE from './utils/PromisE'
 import { isObj, isValidDate, objToUrlParams } from './utils/utils'
-import { logIncident, logWithTag } from './log'
+import { log, logIncident, logWithTag } from './log'
 import { getHistoryItemId, usdToROE } from './utils'
 
 const API_BASE_URL = 'https://www.alphavantage.co/query?'
@@ -314,7 +314,7 @@ export const updateStockDailyPrices = async (...args) => {
                 const { index, lastDate, priceKey } = batchData[i]
                 const currency = currencies[index]
                 const { _id: currencyId, ticker, type } = currency
-                if (!isObj(data)) return log(`$${ticker}: empty result received`, { result })
+                if (!isObj(result)) return log(`$${ticker}: empty result received`, { result })
 
                 const dates = Object.keys(result)
                     .filter(date => !lastDate || lastDate < date)
@@ -397,7 +397,7 @@ export const updateStockDailyPrices = async (...args) => {
 
             if (i === numBatches - 1) continue
 
-            const secondsDelay = 60 //(60 / apiKeys.length)
+            const secondsDelay = 2 * 60 //(60 / apiKeys.length)
             log(`Waiting ${secondsDelay} seconds to retrieve next batch...`)
             // wait 1 minute and retrieve next batch next batch
             await PromisE.delay(1000 * secondsDelay)
@@ -408,8 +408,12 @@ export const updateStockDailyPrices = async (...args) => {
         log('Failed to update daily prices', err)
     }
     if (!updateDaily) return
-    log('Waiting ~24 hours for next execution...')
     const delay = ms1Day - (new Date() - startTs)
+    const hour = 60 * 60 * 1000
+    // if delay is shorter than 1 hour
+    if (delay <= hour) delay = hour
+    const delayHours = delay / hour
+    log(`Waiting ~${delayHours} hours for next execution...`)
     setTimeout(() => {
         updateStockDailyPrices(dbHistory, dbCurrencies)
     }, delay)
