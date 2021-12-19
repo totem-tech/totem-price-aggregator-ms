@@ -414,7 +414,5 @@ export const updateStockDailyPrices = async (...args) => {
     if (delay <= hour) delay = hour
     const delayHours = delay / hour
     log(`Waiting ~${delayHours} hours for next execution...`)
-    setTimeout(() => {
-        updateStockDailyPrices(dbHistory, dbCurrencies)
-    }, delay)
+    setTimeout(() => updateStockDailyPrices(...args), delay)
 }
